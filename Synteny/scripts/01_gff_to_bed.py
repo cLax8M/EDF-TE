@@ -92,7 +92,18 @@ def gff_to_bed(gff_path, min_scaffold_genes=3):
     genome_sizes = {}
     skipped = 0
 
-    with open(gff_path) as fh:
+    # Try UTF-8 first, fall back to latin-1 for legacy GFF files with non-ASCII bytes
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            with open(gff_path, encoding=encoding) as fh:
+                fh.read(1024)  # probe
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        encoding = "latin-1"  # last resort
+
+    with open(gff_path, encoding=encoding, errors="replace") as fh:
         for line in fh:
             if line.startswith("#"):
                 # Capture ##sequence-region directives for genome sizes
@@ -158,6 +169,9 @@ def find_gff_files(gff_dir, species_list=None):
     results = []
     for ext in ("*.gff", "*.gff3"):
         for fp in sorted(gff_dir.glob(ext)):
+            # Skip macOS AppleDouble hidden metadata files (._*)
+            if fp.name.startswith("._"):
+                continue
             # Species prefix = filename without extension
             prefix = fp.stem
             # Strip trailing _c (cleaned) suffix used by OrthoFinder inputs
