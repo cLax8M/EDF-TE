@@ -339,7 +339,7 @@ JOB_06=\$(sbatch \\
   --dependency=afterok:\${GENE_JOB} \\
   --output="${WORK_DIR}/logs/06_paralogs_%j.out" \\
   --error="${WORK_DIR}/logs/06_paralogs_%j.err" \\
-  --wrap="eval \"\\\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/06_filter_paralogs.py --gene-trees-dir ${DIR_GENE_TREES} --filtered-aln-dir ${DIR_FILTERED}/alignments --out-dir ${DIR_FINAL_GENES} --zscore ${PARALOG_ZSCORE}" \\
+  --wrap="micromamba run -n ${CONDA_ENV} python ${SCRIPT_DIR}/06_filter_paralogs.py --gene-trees-dir ${DIR_GENE_TREES} --filtered-aln-dir ${DIR_FILTERED}/alignments --out-dir ${DIR_FINAL_GENES} --zscore ${PARALOG_ZSCORE}" \\
   | awk '{print \$NF}')
 echo "[setup_05] Step 06 paralog_filter: job \${JOB_06} (waits for gene trees \${GENE_JOB})"
 
@@ -351,7 +351,7 @@ JOB_07=\$(sbatch \\
   --dependency=afterok:\${JOB_06} \\
   --output="${WORK_DIR}/logs/07_concat_%j.out" \\
   --error="${WORK_DIR}/logs/07_concat_%j.err" \\
-  --wrap="eval \"\\\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/07_concatenate.py --final-genes-dir ${DIR_FINAL_GENES}/alignments --out-dir ${DIR_CONCAT}" \\
+  --wrap="micromamba run -n ${CONDA_ENV} python ${SCRIPT_DIR}/07_concatenate.py --final-genes-dir ${DIR_FINAL_GENES}/alignments --out-dir ${DIR_CONCAT}" \\
   | awk '{print \$NF}')
 echo "[setup_05] Step 07 concatenate: job \${JOB_07}"
 
@@ -425,7 +425,7 @@ if [[ ${START_STEP} -le 6 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
             ${DEP_06} \
             --output="${WORK_DIR}/logs/06_paralogs_%j.out" \
             --error="${WORK_DIR}/logs/06_paralogs_%j.err" \
-            --wrap="eval \"\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/06_filter_paralogs.py --gene-trees-dir ${DIR_GENE_TREES} --filtered-aln-dir ${DIR_FILTERED}/alignments --out-dir ${DIR_FINAL_GENES} --zscore ${PARALOG_ZSCORE}" \
+            --wrap="micromamba run -n ${CONDA_ENV} python ${SCRIPT_DIR}/06_filter_paralogs.py --gene-trees-dir ${DIR_GENE_TREES} --filtered-aln-dir ${DIR_FILTERED}/alignments --out-dir ${DIR_FINAL_GENES} --zscore ${PARALOG_ZSCORE}" \
             | awk '{print $NF}')
         log "  Job ID: ${JOB_06}"
     else
@@ -451,7 +451,7 @@ if [[ ${START_STEP} -le 7 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
             ${DEP_07} \
             --output="${WORK_DIR}/logs/07_concat_%j.out" \
             --error="${WORK_DIR}/logs/07_concat_%j.err" \
-            --wrap="eval \"\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/07_concatenate.py --final-genes-dir ${DIR_FINAL_GENES}/alignments --out-dir ${DIR_CONCAT}" \
+            --wrap="micromamba run -n ${CONDA_ENV} python ${SCRIPT_DIR}/07_concatenate.py --final-genes-dir ${DIR_FINAL_GENES}/alignments --out-dir ${DIR_CONCAT}" \
             | awk '{print $NF}')
         log "  Job ID: ${JOB_07}"
     else
