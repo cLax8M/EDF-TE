@@ -186,6 +186,13 @@ def main():
 
     # Multipage PDF
     multipage_path = Path("/data/carlos/EDF-TE/PanGenome/figures/per_group_all.pdf")
+
+    # Load combined data ahead of time so it can go into the same multipage PDF
+    combined_path = RESULTS_DIR / "combined" / "combined_pangenome.tsv"
+    df_combined   = pd.read_csv(combined_path, sep="\t") if combined_path.exists() else None
+    GROUP_NAMES["ALL"] = "Combined – all 11 groups"
+    PALETTE["ALL"]     = "#333333"
+
     with PdfPages(multipage_path) as pdf:
         for code in GROUP_ORDER:
             tsv_path = RESULTS_DIR / "per_group" / f"{code}_pangenome.tsv"
@@ -215,6 +222,21 @@ def main():
             # Add to multipage PDF
             pdf.savefig(fig, bbox_inches="tight")
             plt.close(fig)
+
+        # ── Combined (all groups) figure — inside the same PdfPages ──────────
+        if df_combined is not None:
+            fig_all = make_group_figure("ALL", df_combined)
+
+            out_pdf = Path("/data/carlos/EDF-TE/PanGenome/figures/combined_pangenome.pdf")
+            out_png = Path("/data/carlos/EDF-TE/PanGenome/figures/combined_pangenome.png")
+            fig_all.savefig(out_pdf, format="pdf")
+            fig_all.savefig(out_png, format="png", dpi=300)
+            print(f"\n  Combined figure → {out_pdf}")
+            print(f"  Combined figure → {out_png}")
+            pdf.savefig(fig_all, bbox_inches="tight")
+            plt.close(fig_all)
+        else:
+            print(f"\n  [WARNING] Combined TSV not found: {combined_path}")
 
     print(f"\n  Multipage PDF → {multipage_path}")
     print("\nDone.")
