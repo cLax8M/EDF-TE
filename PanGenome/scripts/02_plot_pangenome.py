@@ -67,7 +67,7 @@ PALETTE = [
 # ── Styling ────────────────────────────────────────────────────────────────────
 ALPHA_BAND  = 0.15    # transparency of SD error bands
 LINEWIDTH   = 1.4
-FONT_FAMILY = "Arial"
+FONT_FAMILY = "DejaVu Sans"   # available on Linux; change to Arial/Helvetica in Illustrator
 FONTSIZE_LABEL  = 9
 FONTSIZE_TICK   = 8
 FONTSIZE_LEGEND = 7
