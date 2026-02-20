@@ -8,23 +8,25 @@
 #
 # METRICS AND THRESHOLDS:
 #
-#   1. Saturation (slope of p-distance vs. patristic distance)
-#      - Threshold: slope < 0.24
-#      - Saturated genes mislead long-branch taxa
-#      - Ref: Szánthó et al. 2025 (Fungi timetree)
+#   NOTE: This dataset includes 238 diverse eukaryotes (fungi + outgroups).
+#   RCV values are therefore higher than in fungi-only studies (Szánthó 2025
+#   used 110 fungi with MAX_RCV=0.1; our median RCV ≈ 0.25). Saturation
+#   requires a gene tree (computed in step 05), so it is NOT applied here.
 #
-#   2. Parsimony-Informative Sites (PIS)
+#   1. Parsimony-Informative Sites (PIS)
 #      - Threshold: ≥ MIN_PIS (default 25 sites)
 #      - Genes with too few PIS contribute noise, not signal
 #
-#   3. RCFV (Relative Composition Frequency Variability)
-#      - Threshold: RCFV ≤ 0.1
-#      - High RCFV indicates compositional bias across taxa
-#      - Ref: Szánthó et al. 2025
+#   2. RCV (Relative Composition Variability) — PhyKIT v2 command: 'rcv'
+#      - Threshold: RCV ≤ MAX_RCV (default 0.5, relaxed for diverse eukaryotes)
+#      - Lower RCV = more compositionally homogeneous alignment = better signal
+#      - Note: PhyKIT v2 renamed 'rcfv' → 'rcv'
 #
-#   4. Occupancy (re-computed after trimming)
+#   3. Occupancy (re-computed after trimming)
 #      - Threshold: ≥ MIN_SPECIES_FRACTION (0.40 = 95/238)
 #      - Ensures trimming didn't drastically reduce taxon sampling
+#
+#   Saturation filter → deferred to step 06 (after gene trees are built)
 #
 # OUTPUT  :
 #   04_filtered/alignments/<HOG>.trim.fa    — passing alignments (symlinks)
@@ -57,9 +59,8 @@ from Bio.SeqRecord import SeqRecord
 WORK_DIR       = "/data/carlos/EDF-TE/SpeciesTree"
 TRIMMED_DIR    = f"{WORK_DIR}/03_trimmed"
 OUT_DIR        = f"{WORK_DIR}/04_filtered"
-SAT_THRESHOLD  = 0.24     # Szánthó et al. 2025
 MIN_PIS        = 25       # minimum parsimony-informative sites
-MAX_RCFV       = 0.1      # maximum relative composition frequency variability
+MAX_RCV        = 0.5      # max relative composition variability (relaxed for 238 diverse eukaryotes)
 MIN_OCCUPANCY  = 0.40     # minimum fraction of 238 species (= 95 species)
 N_TOTAL_SPECIES = 238
 
@@ -69,9 +70,8 @@ def parse_args():
         description="Quality-filter HOG alignments using PhyKIT metrics")
     p.add_argument("--trimmed-dir",       default=TRIMMED_DIR)
     p.add_argument("--out-dir",           default=OUT_DIR)
-    p.add_argument("--sat-threshold",     type=float, default=SAT_THRESHOLD)
     p.add_argument("--min-pis",           type=int,   default=MIN_PIS)
-    p.add_argument("--max-rcfv",          type=float, default=MAX_RCFV)
+    p.add_argument("--max-rcv",           type=float, default=MAX_RCV)
     p.add_argument("--min-occupancy",     type=float, default=MIN_OCCUPANCY)
     p.add_argument("--n-species",         type=int,   default=N_TOTAL_SPECIES)
     p.add_argument("--threads",           type=int,   default=8)
@@ -100,42 +100,18 @@ def get_pis(aln_path: str) -> int:
         return -1
 
 
-def get_rcfv(aln_path: str) -> float:
+def get_rcv(aln_path: str) -> float:
     """
-    Calculate Relative Composition Frequency Variability using PhyKIT.
-    Returns mean RCFV or -1.0 on error.
+    Calculate Relative Composition Variability using PhyKIT v2 ('rcv' command).
+    In PhyKIT v2, the old 'rcfv' command was renamed to 'rcv'.
+    Returns RCV value or -1.0 on error.
     """
-    stdout, rc = run_phykit(["phykit", "rcfv", aln_path])
+    stdout, rc = run_phykit(["phykit", "rcv", aln_path])
     if rc != 0:
         return -1.0
     try:
-        # PhyKIT rcfv output: one value per sequence, last line is mean
-        lines = stdout.strip().split("\n")
-        for line in reversed(lines):
-            if "mean" in line.lower():
-                return float(line.split()[-1])
-        # If no "mean" line, compute from all values
-        vals = [float(l.split("\t")[-1]) for l in lines if l]
-        return float(np.mean(vals))
-    except (ValueError, IndexError):
-        return -1.0
-
-
-def get_saturation(aln_path: str) -> float:
-    """
-    Calculate substitution saturation using PhyKIT.
-    Returns slope (p-distance vs patristic distance) or -1.0 on error.
-    Slope < threshold means low saturation (pass).
-    """
-    stdout, rc = run_phykit(["phykit", "saturation", "--alignment", aln_path])
-    if rc != 0:
-        return -1.0
-    try:
-        # phykit saturation outputs slope as first number
-        for line in stdout.split("\n"):
-            if line.strip():
-                return float(line.split()[0])
-        return -1.0
+        # PhyKIT rcv output: single float value
+        return float(stdout.strip().split()[0])
     except (ValueError, IndexError):
         return -1.0
 
@@ -154,11 +130,10 @@ def compute_all_metrics(aln_path: str, n_total: int) -> dict:
     hog_id = Path(aln_path).stem.replace(".trim", "")
 
     metrics = {
-        "hog_id"    : hog_id,
+        "og_id"     : hog_id,
         "aln_path"  : aln_path,
         "pis"       : get_pis(aln_path),
-        "rcfv"      : get_rcfv(aln_path),
-        "saturation": get_saturation(aln_path),
+        "rcv"       : get_rcv(aln_path),
         "occupancy" : get_occupancy(aln_path, n_total),
     }
     return metrics
@@ -166,16 +141,13 @@ def compute_all_metrics(aln_path: str, n_total: int) -> dict:
 
 def apply_filters(df: pd.DataFrame, args) -> pd.DataFrame:
     """Add pass/fail columns and a final 'pass_all' column."""
-    df["pass_pis"]        = df["pis"]        >= args.min_pis
-    df["pass_rcfv"]       = (df["rcfv"]      >= 0)  & (df["rcfv"]      <= args.max_rcfv)
-    df["pass_saturation"] = (df["saturation"] < 0)   | (df["saturation"] < args.sat_threshold)
-    df["pass_occupancy"]  = df["occupancy"]  >= args.min_occupancy
-    df["pass_all"]        = (df["pass_pis"] & df["pass_rcfv"] &
-                             df["pass_saturation"] & df["pass_occupancy"])
+    df["pass_pis"]      = df["pis"]       >= args.min_pis
+    df["pass_rcv"]      = (df["rcv"]  >= 0) & (df["rcv"]  <= args.max_rcv)
+    df["pass_occupancy"]= df["occupancy"] >= args.min_occupancy
+    df["pass_all"]      = df["pass_pis"] & df["pass_rcv"] & df["pass_occupancy"]
 
-    # Handle PhyKIT errors (-1 values): treat as missing, keep in uncertain cases
-    # Flag metrics where PhyKIT returned -1 so user can inspect
-    df["phykit_error"] = (df["pis"] == -1) | (df["rcfv"] == -1.0) | (df["saturation"] == -1.0)
+    # Flag PhyKIT errors (-1 values)
+    df["phykit_error"] = (df["pis"] == -1) | (df["rcv"] == -1.0)
 
     return df
 
@@ -190,10 +162,10 @@ def main():
     print(f" Output dir    : {args.out_dir}")
     print(f" Threads       : {args.threads}")
     print(f" Thresholds:")
-    print(f"   Saturation  : < {args.sat_threshold}  (Szánthó et al. 2025)")
-    print(f"   Min PIS     : ≥ {args.min_pis}")
-    print(f"   Max RCFV    : ≤ {args.max_rcfv}  (Szánthó et al. 2025)")
-    print(f"   Min occupancy: ≥ {args.min_occupancy:.0%} ({int(args.min_occupancy * args.n_species)} of {args.n_species} spp)\n")
+    print(f"   Min PIS      : ≥ {args.min_pis}")
+    print(f"   Max RCV      : ≤ {args.max_rcv}  (relaxed for 238 diverse eukaryotes)")
+    print(f"   Min occupancy: ≥ {args.min_occupancy:.0%} ({int(args.min_occupancy * args.n_species)} of {args.n_species} spp)")
+    print(f"   Saturation   : deferred to step 06 (requires gene tree)\n")
 
     # Find input alignments
     trimmed_files = sorted(Path(args.trimmed_dir).glob("*.trim.fa"))
@@ -254,11 +226,10 @@ def main():
     print(f"  Passed all filters         : {len(passing)}")
     print(f"  Rejected                   : {len(failing)}")
     print(f"\n  Rejection breakdown:")
-    print(f"    Failed PIS (<{args.min_pis})          : {(~df['pass_pis']).sum()}")
-    print(f"    Failed RCFV (>{args.max_rcfv})        : {(~df['pass_rcfv']).sum()}")
-    print(f"    Failed saturation (>{args.sat_threshold})  : {(~df['pass_saturation']).sum()}")
-    print(f"    Failed occupancy (<{args.min_occupancy:.0%}) : {(~df['pass_occupancy']).sum()}")
-    print(f"    PhyKIT errors             : {df['phykit_error'].sum()}")
+    print(f"    Failed PIS (<{args.min_pis})            : {(~df['pass_pis']).sum()}")
+    print(f"    Failed RCV (>{args.max_rcv})            : {(~df['pass_rcv']).sum()}")
+    print(f"    Failed occupancy (<{args.min_occupancy:.0%})  : {(~df['pass_occupancy']).sum()}")
+    print(f"    PhyKIT errors               : {df['phykit_error'].sum()}")
     print(f"\n  Output:")
     print(f"    Metrics table   : {metrics_path}")
     print(f"    Gene list       : {gene_list_path}")
@@ -275,10 +246,10 @@ def main():
         fh.write(f"Passed all filters    : {len(passing)}\n")
         fh.write(f"Rejected              : {len(failing)}\n")
         fh.write(f"\nThresholds used:\n")
-        fh.write(f"  Saturation  < {args.sat_threshold}\n")
-        fh.write(f"  Min PIS     >= {args.min_pis}\n")
-        fh.write(f"  Max RCFV   <= {args.max_rcfv}\n")
-        fh.write(f"  Min occupancy >= {args.min_occupancy:.0%}\n")
+        fh.write(f"  Min PIS          >= {args.min_pis}\n")
+        fh.write(f"  Max RCV          <= {args.max_rcv}  (relaxed for 238 diverse eukaryotes)\n")
+        fh.write(f"  Min occupancy    >= {args.min_occupancy:.0%}\n")
+        fh.write(f"  Saturation       → deferred to step 06 (requires gene tree)\n")
         fh.write(f"\nRef: Szánthó et al. 2025, Merényi et al. 2023\n")
 
 

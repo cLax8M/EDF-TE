@@ -60,17 +60,15 @@ MAX_COPIES=2
 # Ref: Merényi et al. 2023
 MIN_ALN_LEN=60
 
-# Saturation threshold (slope of observed vs. inferred distances)
-# HOGs with slope > threshold are excluded due to substitution saturation
-# Ref: Szánthó et al. 2025
-SAT_THRESHOLD=0.24
-
 # Minimum parsimony-informative sites per alignment
 # Below this, the gene contributes little phylogenetic signal
 MIN_PIS=25
 
-# Maximum Relative Composition Frequency Variability (compositional bias)
-MAX_RCFV=0.1
+# Maximum Relative Composition Variability (PhyKIT v2 command: 'rcv')
+# Note: threshold relaxed to 0.5 for 238 diverse eukaryotes (fungi + outgroups).
+# Szánthó et al. 2025 used 0.1 for 110 fungi-only species.
+# Saturation filter is deferred to step 06 (requires gene trees).
+MAX_RCV=0.5
 
 # Branch length z-score threshold for paralog detection
 # Branches with |z| > threshold are flagged as potential ancient paralogs
