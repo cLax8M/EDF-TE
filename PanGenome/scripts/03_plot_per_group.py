@@ -104,62 +104,74 @@ def make_group_figure(code: str, df: pd.DataFrame) -> plt.Figure:
 
     x = df["n"].values
 
-    for ax, y_col, sd_col, ylabel, sublabel in [
-        (ax1, "pangenome_mean", "pangenome_sd",
-         "Pangenome size\n(gene families)", "a"),
-        (ax2, "core_mean",      "core_sd",
-         "Core genome size\n(gene families)", "b"),
-    ]:
+    # ── Colours for the four curves ───────────────────────────────────────────
+    c_pan    = color          # group colour  → pangenome
+    c_core   = "#222222"      # near-black    → core
+    c_shell  = "#e8a020"      # amber         → shell
+    c_unique = "#cc3333"      # red           → unique
+
+    # ── Panel a: pangenome + shell + unique ───────────────────────────────────
+    curves_a = [
+        ("pangenome_mean", "pangenome_sd", c_pan,    "Pangenome", "-"),
+        ("shell_mean",     "shell_sd",     c_shell,  "Shell",     "--"),
+        ("unique_mean",    "unique_sd",    c_unique, "Unique",    ":"),
+    ]
+    for y_col, sd_col, c, label, ls in curves_a:
         y  = df[y_col].values
         sd = df[sd_col].values
-
-        ax.plot(x, y, color=color, linewidth=LINEWIDTH, zorder=3)
-        ax.fill_between(x, np.maximum(0, y - sd), y + sd,
-                        color=color, alpha=ALPHA_BAND, linewidth=0)
-
+        ax1.plot(x, y, color=c, linewidth=LINEWIDTH, linestyle=ls,
+                 label=label, zorder=3)
+        ax1.fill_between(x, np.maximum(0, y - sd), y + sd,
+                         color=c, alpha=ALPHA_BAND, linewidth=0)
         # Annotate final value
-        ax.annotate(f"{int(round(y[-1])):,}",
-                    xy=(x[-1], y[-1]),
-                    xytext=(5, 0), textcoords="offset points",
-                    fontsize=FONTSIZE_ANNOT, color=color,
-                    va="center", ha="left")
+        ax1.annotate(f"{int(round(y[-1])):,}",
+                     xy=(x[-1], y[-1]), xytext=(5, 0),
+                     textcoords="offset points",
+                     fontsize=FONTSIZE_ANNOT, color=c,
+                     va="center", ha="left")
 
-        ax.set_xlabel("Number of genomes", fontsize=FONTSIZE_LABEL)
-        ax.set_ylabel(ylabel, fontsize=FONTSIZE_LABEL)
-        ax.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_k))
-        ax.xaxis.set_major_locator(mticker.MaxNLocator(integer=True, nbins=6))
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.text(-0.12, 1.06, sublabel, transform=ax.transAxes,
-                fontsize=11, fontweight="bold", va="top", ha="left")
+    ax1.legend(fontsize=FONTSIZE_ANNOT, frameon=False, loc="upper left")
+    ax1.set_xlabel("Number of genomes", fontsize=FONTSIZE_LABEL)
+    ax1.set_ylabel("Gene families", fontsize=FONTSIZE_LABEL)
+    ax1.set_title("Pangenome, Shell & Unique", fontsize=FONTSIZE_LABEL,
+                  pad=4, color="#333333")
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_k))
+    ax1.xaxis.set_major_locator(mticker.MaxNLocator(integer=True, nbins=6))
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
+    ax1.text(-0.12, 1.06, "a", transform=ax1.transAxes,
+             fontsize=11, fontweight="bold", va="top", ha="left")
 
-    # Annotate first-genome mean ± SD on pangenome panel (= genome size proxy)
+    # Annotate per-genome gene count at n=1
     y1  = df["pangenome_mean"].values[0]
     sd1 = df["pangenome_sd"].values[0]
     ax1.annotate(f"n=1: {int(round(y1)):,} ± {int(round(sd1)):,}",
-                 xy=(1, y1),
-                 xytext=(5, -12), textcoords="offset points",
+                 xy=(1, y1), xytext=(5, -12), textcoords="offset points",
                  fontsize=FONTSIZE_ANNOT - 0.5, color="#555555",
                  va="top", ha="left")
 
-    # Stack bar inset (pie-like summary) in top-right of ax2
-    last = df.iloc[-1]
-    core_f  = last["core_mean"]
-    shell_f = last["shell_mean"]
-    uniq_f  = last["unique_mean"]
-    total   = core_f + shell_f + uniq_f
-    if total > 0:
-        pct_c = core_f  / total * 100
-        pct_s = shell_f / total * 100
-        pct_u = uniq_f  / total * 100
-        txt = (f"Core:   {int(round(core_f)):>6,}  ({pct_c:.0f}%)\n"
-               f"Shell:  {int(round(shell_f)):>6,}  ({pct_s:.0f}%)\n"
-               f"Unique: {int(round(uniq_f)):>6,}  ({pct_u:.0f}%)")
-        ax2.text(0.97, 0.97, txt, transform=ax2.transAxes,
-                 fontsize=FONTSIZE_ANNOT, va="top", ha="right",
-                 family="monospace",
-                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
-                           edgecolor="#cccccc", linewidth=0.6))
+    # ── Panel b: core ─────────────────────────────────────────────────────────
+    y_c  = df["core_mean"].values
+    sd_c = df["core_sd"].values
+    ax2.plot(x, y_c, color=c_core, linewidth=LINEWIDTH, label="Core", zorder=3)
+    ax2.fill_between(x, np.maximum(0, y_c - sd_c), y_c + sd_c,
+                     color=c_core, alpha=ALPHA_BAND, linewidth=0)
+    ax2.annotate(f"{int(round(y_c[-1])):,}",
+                 xy=(x[-1], y_c[-1]), xytext=(5, 0),
+                 textcoords="offset points",
+                 fontsize=FONTSIZE_ANNOT, color=c_core,
+                 va="center", ha="left")
+
+    ax2.set_xlabel("Number of genomes", fontsize=FONTSIZE_LABEL)
+    ax2.set_ylabel("Gene families", fontsize=FONTSIZE_LABEL)
+    ax2.set_title("Core genome decay", fontsize=FONTSIZE_LABEL,
+                  pad=4, color="#333333")
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(fmt_k))
+    ax2.xaxis.set_major_locator(mticker.MaxNLocator(integer=True, nbins=6))
+    ax2.spines["top"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+    ax2.text(-0.12, 1.06, "b", transform=ax2.transAxes,
+             fontsize=11, fontweight="bold", va="top", ha="left")
 
     fig.tight_layout()
     return fig
