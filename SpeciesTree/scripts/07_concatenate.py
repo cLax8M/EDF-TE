@@ -46,6 +46,8 @@ from Bio.Seq import Seq
 WORK_DIR         = "/data/carlos/EDF-TE/SpeciesTree"
 FINAL_GENES_DIR  = f"{WORK_DIR}/06_final_genes/alignments"
 OUT_DIR          = f"{WORK_DIR}/07_concatenated"
+# Master species list: GeneCount TSV header (all 238 species)
+SPECIES_REF      = "/legserv/Temp/Carlos/EDF-TE/results/Orthofinder_run/Orthogroups/Orthogroups.GeneCount.tsv"
 
 
 def parse_args():
@@ -56,16 +58,47 @@ def parse_args():
     p.add_argument("--out-dir",         default=OUT_DIR)
     p.add_argument("--min-genes-per-species", type=int, default=10,
                    help="Species with fewer genes than this are flagged (not removed)")
+    p.add_argument("--species-ref",     default=SPECIES_REF,
+                   help="GeneCount TSV — header used as authoritative species list. "
+                        "Species absent from all alignments get all-gap rows.")
     return p.parse_args()
 
 
-def collect_all_species(aln_files: list) -> set:
-    """Collect the union of all species across all alignments."""
+def load_reference_species(ref_tsv: str) -> set:
+    """
+    Read the header of Orthogroups.GeneCount.tsv and return the set of all
+    species names (column headers, stripped of '.aa' suffix for consistency
+    with sequence header format used in the alignments).
+    """
+    with open(ref_tsv) as fh:
+        header = fh.readline().rstrip('\n').split('\t')
+    # First column is 'Orthogroup', drop it and 'Total' if present
+    species = set()
+    for col in header[1:]:
+        if col == 'Total':
+            continue
+        # Strip '.aa' suffix to match seq header format (e.g. MU_Jimfl.aa → MU_Jimfl.aa)
+        # Actually keep as-is; seq headers use the full column name (e.g. MU_Jimfl.aa)
+        species.add(col)
+    return species
+
+
+def collect_all_species(aln_files: list, ref_species: set = None) -> set:
+    """Collect the union of all species across all alignments.
+    If ref_species is provided, it is used as the master list (any species
+    in ref_species but absent from all alignments will get all-gap rows).
+    """
     all_species = set()
     for aln_path in aln_files:
         for rec in SeqIO.parse(aln_path, "fasta"):
             sp = rec.id.split("|")[0]
             all_species.add(sp)
+    if ref_species:
+        missing = ref_species - all_species
+        if missing:
+            print(f"     WARNING: {len(missing)} species absent from all alignments "
+                  f"— added as all-gap rows: {', '.join(sorted(missing))}")
+        all_species = all_species | ref_species
     return all_species
 
 
@@ -184,10 +217,14 @@ def main():
     else:
         print(f"INFO: {len(aln_files)} genes — within target range (225-300+).")
 
-    # Collect all species
+    # Collect all species (use GeneCount header as reference to catch any missing)
     print(f"\n[07] Collecting species list from all alignments...")
-    all_species = collect_all_species([str(f) for f in aln_files])
-    print(f"     Total species found: {len(all_species)}")
+    ref_species = None
+    if args.species_ref and os.path.exists(args.species_ref):
+        ref_species = load_reference_species(args.species_ref)
+        print(f"     Reference species list: {len(ref_species)} taxa from GeneCount TSV")
+    all_species = collect_all_species([str(f) for f in aln_files], ref_species)
+    print(f"     Total species in supermatrix: {len(all_species)}")
 
     # Build supermatrix
     print(f"\n[07] Concatenating {len(aln_files)} alignments...")

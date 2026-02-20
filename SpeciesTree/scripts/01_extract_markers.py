@@ -90,19 +90,25 @@ def filter_orthogroups(counts_file: str, min_species: int,
     print(f"     Orthogroups   : {n_total:,}")
     print(f"     Species       : {n_species}")
 
-    presence  = (counts > 0).sum(axis=1)
-    max_cp    = counts.max(axis=1)
+    # Count species with 1..max_copies genes (the "good" copy-number species).
+    # An OG is selected if at least min_species taxa have 1-max_copies copies.
+    # Species with 0 copies are absent; species with >max_copies are treated as
+    # absent during FASTA extraction (extract_og_fasta enforces max_copies per sp).
+    # This avoids silently dropping species that are single-copy in most OGs but
+    # happen to share those OGs with a few high-copy species in other lineages.
+    good_count = ((counts >= 1) & (counts <= max_copies)).sum(axis=1)
+    max_cp     = counts.max(axis=1)
 
-    mask_occ  = presence >= min_species
-    mask_cp   = max_cp   <= max_copies
-    passing   = counts[mask_occ & mask_cp].copy()
-    passing["n_species_present"] = presence[mask_occ & mask_cp]
-    passing["max_copies"]        = max_cp[mask_occ & mask_cp]
+    mask_good  = good_count >= min_species
+    passing    = counts[mask_good].copy()
+    passing["n_species_present"] = good_count[mask_good]
+    passing["max_copies"]        = max_cp[mask_good]
 
-    print(f"\n     Filter: occupancy ≥ {min_species} ({min_species/n_species:.0%}), "
-          f"max copies ≤ {max_copies}")
-    print(f"     Pass occupancy : {mask_occ.sum():,}")
-    print(f"     Pass both      : {len(passing):,}")
+    n_old_strict = (((counts > 0).sum(axis=1) >= min_species) & (max_cp <= max_copies)).sum()
+    print(f"\n     Filter: ≥ {min_species} species with 1-{max_copies} copies "
+          f"({min_species/n_species:.0%} occupancy)")
+    print(f"     Pass (relaxed) : {len(passing):,}  "
+          f"[old strict filter would give: {n_old_strict:,}]")
 
     if len(passing) == 0:
         print("\n  ERROR: 0 OGs passed. Check input file and thresholds.")
