@@ -59,7 +59,7 @@
 set -euo pipefail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="/data/carlos/EDF-TE/EDF-TE/SpeciesTree/scripts"
 source "${SCRIPT_DIR}/config.sh"
 
 SUPERMATRIX="${DIR_CONCAT}/supermatrix.fa"

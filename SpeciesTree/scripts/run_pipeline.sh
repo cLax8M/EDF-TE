@@ -296,11 +296,19 @@ INNEREOF
 fi
 
 # ─── STEP 05: Gene trees (SLURM array, depends on Step 04) ───────────────────
+# NOTE: When this step is submitted via setup_05 (chained mode), the setup
+# script itself submits steps 06–09 after the gene tree array finishes,
+# so the main script skips those blocks (CHAIN_VIA_SETUP5=true).
+CHAIN_VIA_SETUP5=false
+
 if [[ ${START_STEP} -le 5 ]]; then
     log ""
     log "--- STEP 05: Gene trees IQTree (SLURM array, waits for Step 04) ---"
 
-    # Setup script to create input list after step 04 finishes
+    # setup_step05.sh:
+    #   1. counts filtered alignments → sets array size
+    #   2. submits the gene tree array
+    #   3. chains steps 06→07→08→09 off the gene tree array job ID
     SETUP_SCRIPT_05="${WORK_DIR}/logs/setup_step05.sh"
     cat > "${SETUP_SCRIPT_05}" << INNEREOF
 #!/usr/bin/env bash
@@ -309,21 +317,57 @@ INPUT_LIST="${DIR_GENE_TREES}/input_list.txt"
 mkdir -p "${DIR_GENE_TREES}"
 ls "${DIR_FILTERED}/alignments/"*.fa | sort > "\${INPUT_LIST}"
 N=\$(wc -l < "\${INPUT_LIST}")
-echo "[setup] Found \${N} filtered alignments for Step 05 gene trees."
+echo "[setup_05] Found \${N} filtered alignments for gene trees."
+if [[ \${N} -eq 0 ]]; then echo "ERROR: 0 filtered alignments. Check Step 04."; exit 1; fi
 
-# Re-submit the gene tree array with the correct N
-# (We cannot set array size dynamically in the original sbatch,
-# so the setup job submits it fresh here)
-sbatch \\
+# Submit gene tree array — capture job ID for downstream chaining
+GENE_JOB=\$(sbatch \\
   --array="1-\${N}%30" \\
   --job-name=iqtree_genes \\
   --partition="${PARTITION}" \\
-  --cpus-per-task=4 \\
-  --mem=16G \\
-  --time=04:00:00 \\
+  --cpus-per-task=4 --mem=16G --time=04:00:00 \\
   --output="${WORK_DIR}/logs/05_genetrees_%A_%a.out" \\
   --error="${WORK_DIR}/logs/05_genetrees_%A_%a.err" \\
-  "${SCRIPT_DIR}/05_gene_trees_array.sh"
+  "${SCRIPT_DIR}/05_gene_trees_array.sh" | awk '{print \$NF}')
+echo "[setup_05] Gene tree array: job \${GENE_JOB} (\${N} trees)"
+
+# Step 06 — paralog filter (waits for gene tree array)
+JOB_06=\$(sbatch \\
+  --job-name=paralog_filter \\
+  --partition="${PARTITION}" \\
+  --cpus-per-task=4 --mem=16G --time=02:00:00 \\
+  --dependency=afterok:\${GENE_JOB} \\
+  --output="${WORK_DIR}/logs/06_paralogs_%j.out" \\
+  --error="${WORK_DIR}/logs/06_paralogs_%j.err" \\
+  --wrap="eval \"\\\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/06_filter_paralogs.py --gene-trees-dir ${DIR_GENE_TREES} --filtered-aln-dir ${DIR_FILTERED}/alignments --out-dir ${DIR_FINAL_GENES} --zscore ${PARALOG_ZSCORE}" \\
+  | awk '{print \$NF}')
+echo "[setup_05] Step 06 paralog_filter: job \${JOB_06} (waits for gene trees \${GENE_JOB})"
+
+# Step 07 — concatenate (waits for step 06)
+JOB_07=\$(sbatch \\
+  --job-name=concatenate \\
+  --partition="${PARTITION}" \\
+  --cpus-per-task=4 --mem=32G --time=01:00:00 \\
+  --dependency=afterok:\${JOB_06} \\
+  --output="${WORK_DIR}/logs/07_concat_%j.out" \\
+  --error="${WORK_DIR}/logs/07_concat_%j.err" \\
+  --wrap="eval \"\\\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/07_concatenate.py --final-genes-dir ${DIR_FINAL_GENES}/alignments --out-dir ${DIR_CONCAT}" \\
+  | awk '{print \$NF}')
+echo "[setup_05] Step 07 concatenate: job \${JOB_07}"
+
+# Step 08 — guide tree (waits for step 07)
+JOB_08=\$(sbatch \\
+  --dependency=afterok:\${JOB_07} \\
+  "${SCRIPT_DIR}/08_species_tree_guide.sh" | awk '{print \$NF}')
+echo "[setup_05] Step 08 guide_tree: job \${JOB_08}"
+
+# Step 09 — final tree (waits for step 08)
+JOB_09=\$(sbatch \\
+  --dependency=afterok:\${JOB_08} \\
+  "${SCRIPT_DIR}/09_species_tree_final.sh" | awk '{print \$NF}')
+echo "[setup_05] Step 09 final_tree: job \${JOB_09}"
+
+echo "[setup_05] Chain complete: gene_trees=\${GENE_JOB} 06=\${JOB_06} 07=\${JOB_07} 08=\${JOB_08} 09=\${JOB_09}"
 INNEREOF
     chmod +x "${SETUP_SCRIPT_05}"
 
@@ -332,8 +376,8 @@ INNEREOF
     [[ ${START_STEP} -ge 5 ]] && DEP_05=""
 
     if [[ "${DRY_RUN}" == "false" ]]; then
-        # If resuming from step 5, submit directly with known counts
         if [[ ${START_STEP} -ge 5 ]]; then
+            # Resuming from step 5: submit array directly, then run steps 06-09 normally
             INPUT_LIST_05="${DIR_GENE_TREES}/input_list.txt"
             N_05=$(make_input_list "${DIR_FILTERED}/alignments" "*.fa" "${INPUT_LIST_05}")
             log "  Input files: ${N_05}"
@@ -341,87 +385,59 @@ INNEREOF
                 "${SCRIPT_DIR}/05_gene_trees_array.sh" \
                 --array="1-${N_05}%30")
         else
-            # Submit setup job that will itself submit the array
+            # Chained mode: setup_05 will submit array + chain 06-09 after gene trees finish
             JOB_SETUP_05=$(sbatch \
                 --job-name=setup_05 \
                 --partition="${PARTITION}" \
-                --cpus-per-task=1 --mem=1G --time=00:05:00 \
+                --cpus-per-task=1 --mem=1G --time=00:10:00 \
                 ${DEP_05} \
                 --output="${WORK_DIR}/logs/setup05_%j.out" \
                 --wrap="bash ${SETUP_SCRIPT_05}" \
                 | awk '{print $NF}')
-            log "  Setup job: ${JOB_SETUP_05} (will auto-submit gene tree array)"
+            log "  Setup job: ${JOB_SETUP_05} (will auto-submit gene trees + steps 06-09)"
             JOB_05="PENDING_VIA_${JOB_SETUP_05}"
+            CHAIN_VIA_SETUP5=true
         fi
     else
         log "  [DRY-RUN] Would submit gene tree array (depends on Step 04)"
+        log "  [DRY-RUN] setup_05 would then chain steps 06-09 after gene trees finish"
         JOB_05="DRYRUN_JOB_genetrees"
     fi
 fi
 
+# Steps 06-09 are handled inside setup_05 when running in chained mode.
+# They are only submitted here when resuming directly from step 6+.
+
 # ─── STEP 06: Filter paralogs ─────────────────────────────────────────────────
-if [[ ${START_STEP} -le 6 ]]; then
+if [[ ${START_STEP} -le 6 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
     log ""
     log "--- STEP 06: Paralog filtering (serial) ---"
 
-    SETUP_SCRIPT_06="${WORK_DIR}/logs/setup_step06.sh"
-    cat > "${SETUP_SCRIPT_06}" << INNEREOF
-#!/usr/bin/env bash
-set -euo pipefail
-eval "\$(micromamba shell hook --shell=bash)"
-micromamba activate "${CONDA_ENV}"
-python "${SCRIPT_DIR}/06_filter_paralogs.py" \\
-    --gene-trees-dir "${DIR_GENE_TREES}" \\
-    --filtered-aln-dir "${DIR_FILTERED}/alignments" \\
-    --out-dir "${DIR_FINAL_GENES}" \\
-    --zscore "${PARALOG_ZSCORE}"
-INNEREOF
-    chmod +x "${SETUP_SCRIPT_06}"
-
-    # Step 06 depends on step 05, but step 05's array was submitted by a setup job
-    # and we may not have its job ID. Use a time-based dependency approach:
-    # submit step 06 with --dependency=singleton (waits for all jobs with same name)
-    # OR, if we have JOB_05, use that.
     DEP_06=""
-    if [[ -n "${JOB_05:-}" ]] && [[ "${JOB_05}" != *"PENDING"* ]]; then
-        DEP_06="--dependency=afterok:${JOB_05}"
-    fi
+    [[ -n "${JOB_05:-}" ]] && [[ "${JOB_05}" != *"PENDING"* ]] && DEP_06="--dependency=afterok:${JOB_05}"
+    [[ ${START_STEP} -ge 6 ]] && DEP_06=""
 
     if [[ "${DRY_RUN}" == "false" ]]; then
         JOB_06=$(sbatch \
             --job-name=paralog_filter \
             --partition="${PARTITION}" \
-            --cpus-per-task=4 \
-            --mem=16G \
-            --time=02:00:00 \
-            --dependency=singleton \
+            --cpus-per-task=4 --mem=16G --time=02:00:00 \
+            ${DEP_06} \
             --output="${WORK_DIR}/logs/06_paralogs_%j.out" \
             --error="${WORK_DIR}/logs/06_paralogs_%j.err" \
-            --wrap="bash ${SETUP_SCRIPT_06}" \
+            --wrap="eval \"\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/06_filter_paralogs.py --gene-trees-dir ${DIR_GENE_TREES} --filtered-aln-dir ${DIR_FILTERED}/alignments --out-dir ${DIR_FINAL_GENES} --zscore ${PARALOG_ZSCORE}" \
             | awk '{print $NF}')
-        log "  Job ID: ${JOB_06} (waits for all iqtree_genes jobs to finish)"
+        log "  Job ID: ${JOB_06}"
     else
-        log "  [DRY-RUN] Would submit paralog filter job"
+        log "  [DRY-RUN] Would submit paralog filter"
         JOB_06="DRYRUN_JOB_paralogs"
     fi
 fi
 
 # ─── STEP 07: Concatenate ─────────────────────────────────────────────────────
-if [[ ${START_STEP} -le 7 ]]; then
+if [[ ${START_STEP} -le 7 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
     log ""
     log "--- STEP 07: Build supermatrix (serial) ---"
-
-    SETUP_SCRIPT_07="${WORK_DIR}/logs/setup_step07.sh"
-    cat > "${SETUP_SCRIPT_07}" << INNEREOF
-#!/usr/bin/env bash
-set -euo pipefail
-eval "\$(micromamba shell hook --shell=bash)"
-micromamba activate "${CONDA_ENV}"
-python "${SCRIPT_DIR}/07_concatenate.py" \\
-    --final-genes-dir "${DIR_FINAL_GENES}/alignments" \\
-    --out-dir "${DIR_CONCAT}"
-INNEREOF
-    chmod +x "${SETUP_SCRIPT_07}"
 
     DEP_07=""
     [[ -n "${JOB_06:-}" ]] && DEP_07="--dependency=afterok:${JOB_06}"
@@ -431,23 +447,21 @@ INNEREOF
         JOB_07=$(sbatch \
             --job-name=concatenate \
             --partition="${PARTITION}" \
-            --cpus-per-task=4 \
-            --mem=32G \
-            --time=01:00:00 \
+            --cpus-per-task=4 --mem=32G --time=01:00:00 \
             ${DEP_07} \
             --output="${WORK_DIR}/logs/07_concat_%j.out" \
             --error="${WORK_DIR}/logs/07_concat_%j.err" \
-            --wrap="bash ${SETUP_SCRIPT_07}" \
+            --wrap="eval \"\$(micromamba shell hook --shell=bash)\" && micromamba activate ${CONDA_ENV} && python ${SCRIPT_DIR}/07_concatenate.py --final-genes-dir ${DIR_FINAL_GENES}/alignments --out-dir ${DIR_CONCAT}" \
             | awk '{print $NF}')
         log "  Job ID: ${JOB_07}"
     else
-        log "  [DRY-RUN] Would submit concatenate job"
+        log "  [DRY-RUN] Would submit concatenate"
         JOB_07="DRYRUN_JOB_concat"
     fi
 fi
 
 # ─── STEP 08: Guide tree ──────────────────────────────────────────────────────
-if [[ ${START_STEP} -le 8 ]]; then
+if [[ ${START_STEP} -le 8 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
     log ""
     log "--- STEP 08: Guide tree LG+F+G4 (waits for Step 07) ---"
 
@@ -456,10 +470,7 @@ if [[ ${START_STEP} -le 8 ]]; then
     [[ ${START_STEP} -ge 8 ]] && DEP_08=""
 
     if [[ "${DRY_RUN}" == "false" ]]; then
-        JOB_08=$(sbatch \
-            ${DEP_08} \
-            "${SCRIPT_DIR}/08_species_tree_guide.sh" \
-            | awk '{print $NF}')
+        JOB_08=$(sbatch ${DEP_08} "${SCRIPT_DIR}/08_species_tree_guide.sh" | awk '{print $NF}')
         log "  Job ID: ${JOB_08} (~6-24h)"
     else
         log "  [DRY-RUN] sbatch ${DEP_08} 08_species_tree_guide.sh"
@@ -468,7 +479,7 @@ if [[ ${START_STEP} -le 8 ]]; then
 fi
 
 # ─── STEP 09: Final species tree ──────────────────────────────────────────────
-if [[ ${START_STEP} -le 9 ]]; then
+if [[ ${START_STEP} -le 9 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
     log ""
     log "--- STEP 09: Final tree LG+C60+F+G4 (waits for Step 08) ---"
 
@@ -477,10 +488,7 @@ if [[ ${START_STEP} -le 9 ]]; then
     [[ ${START_STEP} -ge 9 ]] && DEP_09=""
 
     if [[ "${DRY_RUN}" == "false" ]]; then
-        JOB_09=$(sbatch \
-            ${DEP_09} \
-            "${SCRIPT_DIR}/09_species_tree_final.sh" \
-            | awk '{print $NF}')
+        JOB_09=$(sbatch ${DEP_09} "${SCRIPT_DIR}/09_species_tree_final.sh" | awk '{print $NF}')
         log "  Job ID: ${JOB_09} (~24-96h)"
     else
         log "  [DRY-RUN] sbatch ${DEP_09} 09_species_tree_final.sh"
@@ -497,11 +505,16 @@ log "  01 extract    → runs immediately (Python, interactive)"
 log "  02 mafft      → SLURM array  (job ${JOB_02:-submitted})"
 log "  03 trimal     → SLURM array  (job ${JOB_03:-submitted}, waits for 02)"
 log "  04 phykit     → SLURM serial (job ${JOB_04:-submitted}, waits for 03)"
-log "  05 gene trees → SLURM array  (auto-submitted after 04)"
-log "  06 paralogs   → SLURM serial (waits for all gene tree jobs)"
-log "  07 concat     → SLURM serial (job ${JOB_07:-submitted}, waits for 06)"
-log "  08 guide tree → SLURM serial (job ${JOB_08:-submitted}, waits for 07)"
-log "  09 final tree → SLURM serial (job ${JOB_09:-submitted}, waits for 08)"
+if [[ "${CHAIN_VIA_SETUP5}" == "true" ]]; then
+    log "  05 gene trees → via setup_05 (auto-submitted after 04 finishes)"
+    log "  06-09         → chained inside setup_05 after gene trees complete"
+else
+    log "  05 gene trees → SLURM array  (job ${JOB_05:-submitted})"
+    log "  06 paralogs   → SLURM serial (job ${JOB_06:-submitted})"
+    log "  07 concat     → SLURM serial (job ${JOB_07:-submitted})"
+    log "  08 guide tree → SLURM serial (job ${JOB_08:-submitted})"
+    log "  09 final tree → SLURM serial (job ${JOB_09:-submitted})"
+fi
 log ""
 log " Monitor: watch -n 60 \"squeue -u \$USER\""
 log " Logs:    ${WORK_DIR}/logs/"
