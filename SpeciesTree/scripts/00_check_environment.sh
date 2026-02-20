@@ -98,7 +98,7 @@ python -c "import Bio; print('[PASS] Biopython:', Bio.__version__)" 2>/dev/null 
     || { echo "[FAIL] Biopython: not importable"; FAIL=$((FAIL + 1)); }
 
 python -c "from ete3 import Tree; print('[PASS] ete3: importable')" 2>/dev/null \
-    || { echo "[FAIL] ete3: not importable (needed for 06_filter_paralogs.py)"; FAIL=$((FAIL + 1)); }
+    echo "[WARN] ete3 not installed (no longer required)"
 
 echo ""
 echo "--- Required input files ---"
