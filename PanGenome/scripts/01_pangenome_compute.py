@@ -2,7 +2,7 @@
 """
 01_pangenome_compute.py
 -----------------------
-Pangenome analysis from OrthoFinder hierarchical orthogroups (N1.tsv).
+Pangenome analysis from OrthoFinder flat orthogroups (Orthogroups.GeneCount.tsv).
 
 For each taxonomic group (and for the combined dataset), computes:
   - Pangenome accumulation   : gene families present in >= 1 genome
@@ -31,9 +31,9 @@ import pandas as pd
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-DATA_DIR    = Path("/data/carlos/EDF-TE/PanGenome/data")
-RESULTS_DIR = Path("/data/carlos/EDF-TE/PanGenome/results")
-N1_TSV      = DATA_DIR / "N1.tsv"
+DATA_DIR       = Path("/data/carlos/EDF-TE/PanGenome/data")
+RESULTS_DIR    = Path("/data/carlos/EDF-TE/PanGenome/results")
+GENECOUNT_TSV  = DATA_DIR / "Orthogroups.GeneCount.tsv"
 
 # ── Target groups (2-letter prefixes) ─────────────────────────────────────────
 GROUP_NAMES = {
@@ -153,13 +153,15 @@ def main():
     args = parse_args()
     rng  = np.random.default_rng(args.seed)
 
-    print(f"[{time.strftime('%H:%M:%S')}] Loading N1.tsv ...")
-    df_hog = pd.read_csv(N1_TSV, sep="\t", dtype=str, low_memory=False)
-    print(f"  Loaded {len(df_hog):,} HOGs x {df_hog.shape[1]} columns")
+    print(f"[{time.strftime('%H:%M:%S')}] Loading Orthogroups.GeneCount.tsv ...")
+    # GeneCount TSV: rows = orthogroups, cols = species (integer gene counts) + 'Total'
+    df_hog = pd.read_csv(GENECOUNT_TSV, sep="\t", index_col=0)
+    # Drop the 'Total' column if present
+    if "Total" in df_hog.columns:
+        df_hog = df_hog.drop(columns=["Total"])
+    print(f"  Loaded {len(df_hog):,} orthogroups x {df_hog.shape[1]} species")
 
-    # Identify species columns (exclude HOG, OG, Gene Tree Parent Clade)
-    meta_cols    = ["HOG", "OG", "Gene Tree Parent Clade"]
-    species_cols = [c for c in df_hog.columns if c not in meta_cols]
+    species_cols = list(df_hog.columns)
 
     # Build prefix → species list mapping
     prefix_to_species = {}
@@ -175,8 +177,8 @@ def main():
 
     # Build binary presence/absence matrix (all species at once)
     print(f"\n[{time.strftime('%H:%M:%S')}] Building binary presence/absence matrix ...")
-    # A HOG is "present" in a species if the cell is non-empty (not NaN)
-    pa_full = df_hog[species_cols].notna().values  # shape (n_hogs, n_species), dtype bool
+    # Presence = gene count > 0
+    pa_full = (df_hog.values > 0)  # shape (n_orthogroups, n_species), dtype bool
 
     # Filter to target-group species only
     target_species = []
