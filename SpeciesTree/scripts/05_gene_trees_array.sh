@@ -122,15 +122,14 @@ echo "     Finished: $(date)"
 
 # ─── Quick branch length sanity check ─────────────────────────────────────────
 # Extract max branch length — very long branches suggest paralogs
+# Uses regex on Newick text (no ete3 dependency)
 MAX_BL=$(python3 -c "
-from ete3 import Tree
-import sys
+import re, sys
 try:
-    t = Tree('${PREFIX}.treefile')
-    bls = [n.dist for n in t.traverse() if n.dist > 0]
+    nwk = open('${PREFIX}.treefile').read()
+    bls = [float(x) for x in re.findall(r':([0-9]+\.?[0-9]*(?:e[+-]?[0-9]+)?)', nwk)]
     print(f'{max(bls):.4f}') if bls else print('0')
 except Exception as e:
-    print(f'ERROR: {e}', file=sys.stderr)
-    print('0')
-")
+    print(f'WARN: {e}', file=sys.stderr); print('0')
+" 2>/dev/null || echo "0")
 echo "     Max branch length: ${MAX_BL}"

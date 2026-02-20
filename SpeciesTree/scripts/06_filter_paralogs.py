@@ -51,11 +51,7 @@ import pandas as pd
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 
-try:
-    from ete3 import Tree
-except ImportError:
-    print("ERROR: ete3 not installed. Run: conda install -c ete3 ete3")
-    sys.exit(1)
+from Bio import Phylo
 
 # ─── DEFAULT CONFIGURATION ────────────────────────────────────────────────────
 WORK_DIR        = "/data/carlos/EDF-TE/SpeciesTree"
@@ -76,19 +72,20 @@ def parse_args():
     return p.parse_args()
 
 
-def get_branch_lengths(tree: Tree) -> np.ndarray:
-    """Return array of all branch lengths in the tree (excluding root)."""
-    bls = []
-    for node in tree.traverse():
-        if node.dist > 0 and not node.is_root():
-            bls.append(node.dist)
+def get_branch_lengths(tree) -> np.ndarray:
+    """Return array of all branch lengths in the tree (excluding root).
+    Bio.Phylo: branch_length is None for the root clade.
+    """
+    bls = [c.branch_length for c in tree.find_clades()
+           if c.branch_length is not None and c.branch_length > 0]
     return np.array(bls)
 
 
-def detect_anomalous_branches(tree: Tree, zscore_threshold: float) -> list:
+def detect_anomalous_branches(tree, zscore_threshold: float) -> list:
     """
     Detect leaves (sequences) connected by anomalously long branches.
     Returns list of (leaf_name, branch_length, z_score) for anomalous leaves.
+    Bio.Phylo: tree.get_terminals() for leaves.
     """
     bls = get_branch_lengths(tree)
     if len(bls) < 3:
@@ -101,10 +98,11 @@ def detect_anomalous_branches(tree: Tree, zscore_threshold: float) -> list:
         return []
 
     anomalous = []
-    for leaf in tree.get_leaves():
-        z = (leaf.dist - mean_bl) / std_bl
+    for leaf in tree.get_terminals():
+        bl = leaf.branch_length or 0.0
+        z = (bl - mean_bl) / std_bl
         if z > zscore_threshold:
-            anomalous.append((leaf.name, leaf.dist, z))
+            anomalous.append((leaf.name, bl, z))
 
     return anomalous
 
@@ -117,15 +115,16 @@ def get_species_from_seq_id(seq_id: str) -> str:
     return seq_id.split("|")[0] if "|" in seq_id else seq_id
 
 
-def prune_to_one_per_species(tree: Tree, aln_records: dict) -> tuple:
+def prune_to_one_per_species(tree, aln_records: dict) -> tuple:
     """
     For multi-copy HOGs: keep one sequence per species (closest to median bl).
     Returns (pruned_sequences dict, action_log list).
+    Bio.Phylo: tree.get_terminals() and leaf.branch_length.
     """
     by_species = defaultdict(list)
-    for leaf in tree.get_leaves():
+    for leaf in tree.get_terminals():
         sp = get_species_from_seq_id(leaf.name)
-        by_species[sp].append((leaf.name, leaf.dist))
+        by_species[sp].append((leaf.name, leaf.branch_length or 0.0))
 
     pruned_seqs = {}
     action_log  = []
@@ -161,7 +160,7 @@ def analyze_tree_for_paralogs(tree_path: str, aln_path: str,
     hog_id = Path(tree_path).stem
 
     try:
-        tree = Tree(tree_path)
+        tree = Phylo.read(tree_path, "newick")
     except Exception as e:
         return {"hog_id": hog_id, "status": "TREE_PARSE_ERROR",
                 "reason": str(e), "n_seq_final": 0, "records": None}
@@ -181,7 +180,7 @@ def analyze_tree_for_paralogs(tree_path: str, aln_path: str,
 
     # Decision logic:
     # If >20% of leaves are anomalous → ancient paralogy → REJECT whole HOG
-    n_leaves = len(tree.get_leaves())
+    n_leaves = len(tree.get_terminals())
     n_anomalous = len(anomalous)
     anomaly_fraction = n_anomalous / n_leaves if n_leaves > 0 else 0
 

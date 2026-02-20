@@ -165,17 +165,18 @@ echo " Finished   : $(date)"
 echo ""
 echo "--- Final tree statistics ---"
 python3 -c "
-from ete3 import Tree
+from Bio import Phylo
 import numpy as np
-t = Tree('${PREFIX}.treefile')
-leaves = t.get_leaves()
-supports = [n.support for n in t.traverse() if not n.is_leaf() and n.support > 0]
+t = Phylo.read('${PREFIX}.treefile', 'newick')
+leaves = t.get_terminals()
+supports = [c.confidence for c in t.find_clades()
+            if not c.is_terminal() and c.confidence and c.confidence > 0]
 print(f'Leaves (taxa)  : {len(leaves)}')
 if supports:
     print(f'Bootstrap mean : {np.mean(supports):.1f}')
     print(f'Bootstrap ≥95  : {sum(1 for s in supports if s >= 95)}/{len(supports)} ({100*sum(1 for s in supports if s >= 95)/len(supports):.0f}%)')
     print(f'Bootstrap ≥80  : {sum(1 for s in supports if s >= 80)}/{len(supports)} ({100*sum(1 for s in supports if s >= 80)/len(supports):.0f}%)')
-"
+" 2>/dev/null || echo "   (tree stats unavailable)"
 
 # ─── Post-processing guidance ──────────────────────────────────────────────────
 echo ""

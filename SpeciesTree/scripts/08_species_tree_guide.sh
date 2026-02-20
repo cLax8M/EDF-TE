@@ -115,18 +115,17 @@ echo " Finished: $(date)"
 echo ""
 echo "--- Tree statistics ---"
 python3 -c "
-from ete3 import Tree
-t = Tree('${PREFIX}.treefile')
-# Basic stats
-leaves = t.get_leaves()
+from Bio import Phylo
+import numpy as np, io
+t = Phylo.read('${PREFIX}.treefile', 'newick')
+leaves = t.get_terminals()
 print(f'Leaves (taxa)  : {len(leaves)}')
-# Bootstrap summary
-supports = [n.support for n in t.traverse() if not n.is_leaf() and n.support > 0]
+supports = [c.confidence for c in t.find_clades()
+            if not c.is_terminal() and c.confidence and c.confidence > 0]
 if supports:
-    import numpy as np
     print(f'Bootstrap mean : {np.mean(supports):.1f}')
     print(f'Bootstrap ≥95  : {sum(1 for s in supports if s >= 95)}/{len(supports)} nodes ({100*sum(1 for s in supports if s >= 95)/len(supports):.0f}%)')
-"
+" 2>/dev/null || echo "   (tree stats unavailable)"
 
 echo ""
 echo "[08] NEXT: Compare guide tree to OrthoFinder tree:"
