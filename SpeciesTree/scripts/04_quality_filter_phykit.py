@@ -212,7 +212,7 @@ def main():
 
     # Write gene list
     gene_list_path = os.path.join(args.out_dir, "gene_list.txt")
-    passing["hog_id"].to_csv(gene_list_path, index=False, header=False)
+    passing["og_id"].to_csv(gene_list_path, index=False, header=False)
 
     # Save rejected gene details
     reject_path = os.path.join(reject_dir, "rejected_genes.tsv")
