@@ -8,6 +8,7 @@
 # Data directories (read-only — not in the repo)
 # ---------------------------------------------------------------------------
 export GFF_DIR="/legserv/Temp/Carlos/EDF-TE/data/genes_annot_gff"
+export FAA_DIR="/legserv/Temp/Carlos/EDF-TE/data/proteins_annot_faa"
 export GENOME_DIR="/legserv/Temp/Carlos/EDF-TE/data/genomes"
 export ORTHOLOGUES_DIR="/legserv/Temp/Carlos/EDF-TE/results/Orthofinder_run/Orthologues"
 export ORTHOGROUPS_DIR="/legserv/Temp/Carlos/EDF-TE/results/Orthofinder_run/Orthogroups"
@@ -99,4 +100,5 @@ export ALL_CLADES=(AP AS BA BL BS CH CR EN GL HO KX MI MO MU NU OL ZO)
 
 echo "[config] EDF-TE Synteny configuration loaded."
 echo "         GFF_DIR   : ${GFF_DIR}"
+echo "         FAA_DIR   : ${FAA_DIR}"
 echo "         OUT_DIR   : ${OUT_DIR}"

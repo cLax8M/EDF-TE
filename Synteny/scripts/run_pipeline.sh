@@ -111,6 +111,7 @@ if steps_active 1; then
     run_cmd "Step 01: GFF → BED" \
         python3 "${SCRIPT_DIR}/01_gff_to_bed.py" \
             --gff_dir  "${GFF_DIR}" \
+            --faa_dir  "${FAA_DIR}" \
             --out_dir  "${BED_DIR}" \
         2>&1 | tee "${LOG_DIR}/step01.log"
 fi

@@ -38,6 +38,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SLURM copies submitted scripts to /var/spool/slurmd/jobNNN/slurm_script,
+# losing the original dirname.  Fall back to the known absolute path.
+if [[ "${SCRIPT_DIR}" == /var/spool/* ]]; then
+    SCRIPT_DIR="/data/carlos/EDF-TE/EDF-TE/SpeciesTree/scripts"
+fi
 source "${SCRIPT_DIR}/config.sh"
 
 # ─── Parse arguments ──────────────────────────────────────────────────────────
