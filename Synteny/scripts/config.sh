@@ -98,6 +98,12 @@ export CLADES
 # Ordered list of all clade codes (for looping)
 export ALL_CLADES=(AP AS BA BL BS CH CR EN GL HO KX MI MO MU NU OL ZO)
 
+# Tool paths — syntenyEDFTE micromamba environment
+export MAMBA_ENV="syntenyEDFTE"
+export BEDTOOLS="micromamba run -n ${MAMBA_ENV} bedtools"
+export PARALLEL="micromamba run -n ${MAMBA_ENV} parallel"
+export PYTHON="micromamba run -n ${MAMBA_ENV} python3"
+
 echo "[config] EDF-TE Synteny configuration loaded."
 echo "         GFF_DIR   : ${GFF_DIR}"
 echo "         FAA_DIR   : ${FAA_DIR}"

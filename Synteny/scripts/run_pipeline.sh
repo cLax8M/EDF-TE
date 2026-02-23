@@ -109,7 +109,7 @@ echo "========================================"
 # ---------------------------------------------------------------------------
 if steps_active 1; then
     run_cmd "Step 01: GFF → BED" \
-        python3 "${SCRIPT_DIR}/01_gff_to_bed.py" \
+        ${PYTHON} "${SCRIPT_DIR}/01_gff_to_bed.py" \
             --gff_dir  "${GFF_DIR}" \
             --faa_dir  "${FAA_DIR}" \
             --out_dir  "${BED_DIR}" \
@@ -121,7 +121,7 @@ fi
 # ---------------------------------------------------------------------------
 if steps_active 2; then
     run_cmd "Step 02: Extract ortholog pairs" \
-        python3 "${SCRIPT_DIR}/02_extract_orthologs.py" \
+        ${PYTHON} "${SCRIPT_DIR}/02_extract_orthologs.py" \
             --orthologues_dir "${ORTHOLOGUES_DIR}" \
             --out_dir         "${ORTHOLOG_PAIRS_DIR}" \
             "${CLADE_ARGS_ARRAY[@]}" \
@@ -133,7 +133,7 @@ fi
 # ---------------------------------------------------------------------------
 if steps_active 3; then
     run_cmd "Step 03: Collinear pairs" \
-        python3 "${SCRIPT_DIR}/03_collinear_pairs.py" \
+        ${PYTHON} "${SCRIPT_DIR}/03_collinear_pairs.py" \
             --bed_dir   "${BED_DIR}" \
             --pairs_dir "${ORTHOLOG_PAIRS_DIR}" \
             --out_dir   "${COLLINEAR_DIR}" \
@@ -160,7 +160,7 @@ fi
 # ---------------------------------------------------------------------------
 if steps_active 5; then
     run_cmd "Step 05: Compute synteny ratios" \
-        python3 "${SCRIPT_DIR}/05_synteny_ratio.py" \
+        ${PYTHON} "${SCRIPT_DIR}/05_synteny_ratio.py" \
             --collinear_dir "${COLLINEAR_DIR}" \
             --shuffle_dir   "${SHUFFLE_DIR}" \
             --out_dir       "${RATIO_DIR}" \
@@ -173,7 +173,7 @@ fi
 # ---------------------------------------------------------------------------
 if steps_active 6; then
     run_cmd "Step 06: Plot heatmaps" \
-        python3 "${SCRIPT_DIR}/06_plot_synteny.py" \
+        ${PYTHON} "${SCRIPT_DIR}/06_plot_synteny.py" \
             --ratio_dir "${RATIO_DIR}" \
             --out_dir   "${FIG_DIR}" \
             "${CLADE_ARGS_ARRAY[@]}" \
@@ -188,7 +188,7 @@ if [[ -n "${CIRCOS_A}" && -n "${CIRCOS_B}" ]]; then
     CIRCOS_CLADE="${CIRCOS_A%%_*}"
     CIRCOS_OUT="${FIG_DIR}/circos_${CIRCOS_A}__${CIRCOS_B}"
     run_cmd "Step 07: Circos prep (${CIRCOS_A} × ${CIRCOS_B})" \
-        python3 "${SCRIPT_DIR}/07_circos_prep.py" \
+        ${PYTHON} "${SCRIPT_DIR}/07_circos_prep.py" \
             --sp_a          "${CIRCOS_A}" \
             --sp_b          "${CIRCOS_B}" \
             --clade         "${CIRCOS_CLADE}" \

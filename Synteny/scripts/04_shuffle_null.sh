@@ -16,7 +16,7 @@
 #   {SHUFFLE_DIR}/{CLADE}/{CLADE}_null_means.tsv
 #   Columns: species_A  species_B  s_ij_mean  s_ij_sd
 #
-# Requirements: bedtools >= 2.24, GNU parallel, Python 3 (for step 03)
+# Requirements: bedtools >= 2.24, GNU ${PARALLEL}, Python 3 (for step 03)
 #
 # Usage:
 #   bash 04_shuffle_null.sh --clade CLADE [--n_shuffles 100] [--threads 8]
@@ -75,7 +75,7 @@ shuffle_bed() {
     local out_bed="$3"
     local rep_seed=$(( SEED + rep ))
 
-    bedtools shuffle \
+    ${BEDTOOLS} shuffle \
         -i  "${BED_DIR}/${sp}.bed" \
         -g  "${BED_DIR}/${sp}.genome" \
         -chrom \
@@ -84,7 +84,7 @@ shuffle_bed() {
         > "${out_bed}"
 }
 export -f shuffle_bed
-export SEED BED_DIR
+export SEED BED_DIR BEDTOOLS
 
 # ---------------------------------------------------------------------------
 # Helper: run step 03 collinear pairs on shuffled BED dir → return c_ij value
@@ -99,7 +99,7 @@ compute_shuffled_collinear() {
     local tmp_col_dir="$7"
 
     # Run step 03 on the shuffled BED directory
-    python3 "${SCRIPT_DIR}/03_collinear_pairs.py" \
+    ${PYTHON} "${SCRIPT_DIR}/03_collinear_pairs.py" \
         --bed_dir   "${tmp_bed_dir}" \
         --pairs_dir "${pairs_dir}" \
         --out_dir   "${tmp_col_dir}" \
@@ -196,7 +196,7 @@ for CLADE in "${CLADES_TO_RUN[@]}"; do
         export SP_A SP_B CLADE TMP_DIR ORTHOLOG_PAIRS_DIR BED_DIR SCRIPT_DIR
 
         seq 1 "${N_SHUFFLES}" | \
-            parallel --jobs "${THREADS}" --keep-order run_replicate {} \
+            ${PARALLEL} --jobs "${THREADS}" --keep-order run_replicate {} \
             >> "${PAIR_SHUFFLE_FILE}"
 
         # Compute mean and SD of shuffled c values using awk
