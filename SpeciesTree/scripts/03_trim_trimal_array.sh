@@ -36,7 +36,6 @@
 #SBATCH --partition=normal.168h
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
-#SBATCH --time=00:30:00
 #SBATCH --output=/data/carlos/EDF-TE/SpeciesTree/logs/03_trimal_%A_%a.out
 #SBATCH --error=/data/carlos/EDF-TE/SpeciesTree/logs/03_trimal_%A_%a.err
 #SBATCH --array=1-700%100  # Adjust to actual number of aligned files

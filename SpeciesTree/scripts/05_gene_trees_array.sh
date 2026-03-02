@@ -38,7 +38,6 @@
 #SBATCH --partition=normal.168h
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=16G
-#SBATCH --time=04:00:00
 #SBATCH --output=/data/carlos/EDF-TE/SpeciesTree/logs/05_genetrees_%A_%a.out
 #SBATCH --error=/data/carlos/EDF-TE/SpeciesTree/logs/05_genetrees_%A_%a.err
 #SBATCH --array=1-500%30  # Adjust upper bound; max 30 concurrent to avoid overloading
@@ -51,7 +50,8 @@ source "${SCRIPT_DIR}/config.sh"
 
 FILTERED_DIR="${DIR_FILTERED}/alignments"
 OUT_DIR="${DIR_GENE_TREES}"
-INPUT_LIST="${OUT_DIR}/input_list.txt"
+# Allow overriding input list via environment variable (used by retry runs)
+INPUT_LIST="${INPUT_LIST_OVERRIDE:-${OUT_DIR}/input_list.txt}"
 THREADS=4
 
 # ─── Setup ────────────────────────────────────────────────────────────────────

@@ -54,7 +54,7 @@ def parse_args():
                    help="Directory with per-clade null mean TSVs (step 04)")
     p.add_argument("--out_dir", required=True, help="Output directory")
     group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--clade", nargs="+", choices=CLADES_ALL)
+    group.add_argument("--clade", action="append", choices=CLADES_ALL)
     group.add_argument("--all", action="store_true")
     return p.parse_args()
 

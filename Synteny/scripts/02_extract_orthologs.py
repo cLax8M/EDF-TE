@@ -34,33 +34,60 @@ from itertools import combinations
 
 CLADES = {
     "AP": ["AP_Amoocci", "AP_Amoprot"],
-    "AS": ["AS_AspfumUD1", "AS_Bcine1", "AS_Ccin1", "AS_ChetHAW225", "AS_Cocim1",
-           "AS_Dekbr2", "AS_Metac1", "AS_Ncrass2", "AS_Sacce1", "AS_Schpo1",
-           "AS_Talathe1", "AS_Tuber1", "AS_Zymtr1"],
-    "BA": ["BA_Amamu1", "BA_Copci2", "BA_Fomme1", "BA_Lacbi2", "BA_Monro1",
-           "BA_Pucgr1", "BA_Schco1", "BA_Serpul2", "BA_Treme1", "BA_Ustma2"],
-    "BL": ["BL_Allma1", "BL_Blabri1", "BL_Catan2", "BL_Parsed1"],
+    "AS": ["AS_AspfumUD1", "AS_Bcine1", "AS_ChetHAW225", "AS_Cocim1", "AS_Dekbr2",
+           "AS_Metac1", "AS_Ncrass2", "AS_Sacce1", "AS_Schpo1", "AS_Tapde1",
+           "AS_Usnflo1", "AS_YarliYB419", "AS_Zymtr1"],
+    "BA": ["BA_Amamu1", "BA_Aurde3", "BA_Fomme1", "BA_Hetan2", "BA_Lacbi2",
+           "BA_Maglo", "BA_Mereb1", "BA_Mrafri1", "BA_PleosDSM11191", "BA_Rhisol1",
+           "BA_Rhoto", "BA_SerlaS7", "BA_Treme1", "BA_Ustma2"],
+    "BL": ["BL_Allma1", "BL_Allomarbu", "BL_Blabri1", "BL_Catan2", "BL_Parsed1"],
     "BS": ["BS_Basme", "BS_Basme92"],
-    "CH": ["CH_Batde5", "CH_Caecom1", "CH_Gobsp1", "CH_Lobvas1", "CH_Newsp1",
-           "CH_Pirfi3", "CH_Podang1", "CH_Rhirose", "CH_Spipu1", "CH_Triarc1"],
+    "CH": ["CH_Anasp1", "CH_Batde5", "CH_Batsa1", "CH_Blyhe1", "CH_Caecom1",
+           "CH_Caupr1", "CH_Chyhya1", "CH_Chylag1", "CH_Clapol1", "CH_Clarep1",
+           "CH_Dinkinn", "CH_Enthel1", "CH_Entlut1", "CH_Fimjon1", "CH_Gaesem1",
+           "CH_Ganpr1", "CH_Germichi", "CH_Gervar1", "CH_Glopol1", "CH_Gorhay1",
+           "CH_Hompol1", "CH_Hyacur1", "CH_Lobangu", "CH_Neocon1", "CH_Neolan1",
+           "CH_Obemuc1", "CH_Orpsp1", "CH_Pecora1", "CH_Phybulla", "CH_Pirfi3",
+           "CH_Polagg1", "CH_Powhir1", "CH_Rhihy1", "CH_Rhirose", "CH_Spipu1",
+           "CH_Terramyc", "CH_Triarc1"],
     "CR": ["CR_Parsa1", "CR_Rozal1"],
     "EN": ["EN_Conco1", "EN_Conth1", "EN_Entmai1", "EN_Mascica", "EN_Zoorad1"],
-    "GL": ["GL_Geopyr1", "GL_Gigmar1", "GL_Paroc1", "GL_Rhice1", "GL_Rhicl1",
-           "GL_RhiirA4"],
+    "GL": ["GL_Geopyr1", "GL_Gigmar1", "GL_Gigro1", "GL_Paroc1", "GL_Rhice1",
+           "GL_Rhicl1", "GL_RhiirA4"],
     "HO": ["HO_Acancaste", "HO_Callivi", "HO_Capowcza", "HO_Ciointe",
            "HO_Dicdisco", "HO_Drome", "HO_Homosap", "HO_Hydravulg",
-           "HO_Lucicu", "HO_Luciser", "HO_Magisepte", "HO_Mneleidy",
+           "HO_Lucicu", "HO_Luciser", "HO_Magisepte_c", "HO_Mneleidy",
            "HO_Monbrevi", "HO_Musdom", "HO_Naegrub", "HO_Pluxyl",
            "HO_Salpirose", "HO_Sphaearti", "HO_Thecatra", "HO_Trichadha"],
-    "KX": ["KX_Coemoj1", "KX_DimcrSC1", "KX_Kicala1", "KX_SmicuMNP",
-           "KX_Smimuc2", "KX_Zancul2"],
-    "MI": ["MI_Enccu1", "MI_Encin1", "MI_MicG_I_3", "MI_Nosap1",
-           "MI_Traho1", "MI_Vitco1"],
-    "MO": ["MO_Moramb1", "MO_Morel2", "MO_Morgam1", "MO_Morcap1",
-           "MO_Disdec1", "MO_Lobtra1"],
-    "MU": ["MU_Mucci3", "MU_Mucmuc1", "MU_Phybl4", "MU_Rhimi59",
-           "MU_Rhipu1", "MU_Rhisto1", "MU_Zycmex1"],
-    "NU": ["NU_Fontalba", "NU_Parvatl"],
+    "KX": ["KX_Coemoj1", "KX_Coespi1", "KX_DimcrSC1", "KX_Dispsimple",
+           "KX_Kicala1", "KX_Linpe1", "KX_Marpt1", "KX_Pincor1", "KX_Rambr1",
+           "KX_SmicuMNP", "KX_Smimuc2", "KX_Spiroaspi", "KX_Zancul2"],
+    "MI": ["MI_AmpWSBS2006", "MI_Antlo1", "MI_Edhae1", "MI_Enccu1", "MI_Enche1",
+           "MI_Encin1", "MI_Encro1", "MI_Entbi1", "MI_Entca1", "MI_Heper1",
+           "MI_MicG_I_3", "MI_Mitdap1", "MI_Nemdi1", "MI_Nempa1", "MI_Nosap1",
+           "MI_Nosbo1", "MI_Ordco1", "MI_Pseneu1", "MI_Sprlo1", "MI_Traho1",
+           "MI_Vavcu1", "MI_Vitco1"],
+    "MO": ["MO_Disdec1", "MO_Disorn1", "MO_Entech1", "MO_HabiNA12553",
+           "MO_Lobtra1", "MO_MoalAD071", "MO_MoamBC1065", "MO_MobeAD1040",
+           "MO_MocaN2610", "MO_MochAD033", "MO_MoclAM1000", "MO_Mocy1230",
+           "MO_MoelGBA34", "MO_MoepAD058", "MO_MoepN5512", "MO_MomuN6456",
+           "MO_Moramb1", "MO_Morcap1", "MO_MoreMES2147", "MO_Morel2",
+           "MO_Morgam1", "MO_Mormul1", "MO_Morsel1", "MO_Morwol1",
+           "MO_MowoN66265", "MO_MozyN2592"],
+    "MU": ["MU_Abscae1", "MU_Absrep1", "MU_Amyrou1", "MU_Apoossi", "MU_Bacci1",
+           "MU_Baclam1", "MU_Benpoi1", "MU_Bifad1", "MU_Blatri", "MU_Calth1",
+           "MU_Chabre1", "MU_Chlapade", "MU_Chocucu1", "MU_Cirumb1", "MU_Cokrec1",
+           "MU_Cunech1", "MU_Dicele1", "MU_Dicrob1", "MU_Ellano2", "MU_Endsp1",
+           "MU_Fenlin", "MU_Gilper1", "MU_Gonbut1", "MU_Halrad1", "MU_Helpul1",
+           "MU_Hesve2", "MU_Jimfl", "MU_Jimlac1", "MU_Kircor1", "MU_Lenpar1",
+           "MU_Lenzyc1", "MU_Liccor1", "MU_Licra1", "MU_Mucam1", "MU_Mucci3",
+           "MU_Muccirc1", "MU_Mucend1", "MU_Muclan1", "MU_Mucmuc1", "MU_Mucpir1",
+           "MU_Mucrac1", "MU_Mycafr1", "MU_Mycind1", "MU_Parpar1", "MU_Phaart1",
+           "MU_Phybl4", "MU_Pilano1", "MU_Pilumb1", "MU_PnitS607", "MU_Radspe1",
+           "MU_Rhimi59", "MU_Rhior3", "MU_Rhipu1", "MU_Rhisto1", "MU_Sakvas1",
+           "MU_Spifus1", "MU_Spoumb1", "MU_Synrac1", "MU_Syzme1", "MU_Thaele1",
+           "MU_Umban1", "MU_Umbra1", "MU_Zycmex1"],
+    "NU": ["NU_Fontalba", "NU_Parvatl_c"],
     "OL": ["OL_Olpbor1"],
     "ZO": ["ZO_Pipcy3", "ZO_Synfus1", "ZO_Synplu1", "ZO_Thasp1"],
 }
@@ -78,7 +105,7 @@ def parse_args():
     p.add_argument("--out_dir", required=True,
                    help="Output directory for .pairs.tsv files")
     group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--clade", nargs="+", choices=list(CLADES.keys()),
+    group.add_argument("--clade", action="append", choices=list(CLADES.keys()),
                        help="Clade code(s) to process")
     group.add_argument("--all", action="store_true",
                        help="Process all clades")
@@ -118,6 +145,15 @@ def find_orthologues_file(orth_dir, sp_a, sp_b):
     candidate2_rev = orth_dir / f"Orthologues_{sp_b}" / f"{sp_b}__v__{sp_a}.tsv"
     if candidate2_rev.exists():
         return candidate2_rev, True
+
+    # Last resort: glob for mixed .aa / no-.aa naming (e.g. BA_Treme1, CH_Batde5)
+    for sp_x, sp_y, is_rev in [(sp_a, sp_b, False), (sp_b, sp_a, True)]:
+        for dir_suffix in [".aa", ""]:
+            d = orth_dir / f"Orthologues_{sp_x}{dir_suffix}"
+            if d.exists():
+                matches = list(d.glob(f"{sp_x}*__v__{sp_y}*.tsv"))
+                if matches:
+                    return matches[0], is_rev
 
     return None, None
 

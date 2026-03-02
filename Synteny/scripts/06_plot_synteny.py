@@ -76,7 +76,7 @@ def parse_args():
                    help="Directory with per-clade *_synteny_ratios.tsv files (step 05)")
     p.add_argument("--out_dir",   required=True, help="Output directory for figures")
     group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--clade", nargs="+", choices=CLADES_ALL)
+    group.add_argument("--clade", action="append", choices=CLADES_ALL)
     group.add_argument("--all", action="store_true")
     p.add_argument("--flag_species", nargs="*", default=[],
                    help="Species prefixes to flag with * in labels (e.g. fragmented assemblies)")

@@ -115,11 +115,14 @@ def get_species_from_seq_id(seq_id: str) -> str:
     return seq_id.split("|")[0] if "|" in seq_id else seq_id
 
 
-def prune_to_one_per_species(tree, aln_records: dict) -> tuple:
+def prune_to_one_per_species(tree, aln_records: dict,
+                             aln_records_sanitized: dict = None) -> tuple:
     """
     For multi-copy HOGs: keep one sequence per species (closest to median bl).
     Returns (pruned_sequences dict, action_log list).
     Bio.Phylo: tree.get_terminals() and leaf.branch_length.
+    aln_records_sanitized: fallback lookup dict where keys have '%' replaced by '_',
+    matching the IQTree newick sanitization (%252E -> _252E etc.).
     """
     by_species = defaultdict(list)
     for leaf in tree.get_terminals():
@@ -145,8 +148,13 @@ def prune_to_one_per_species(tree, aln_records: dict) -> tuple:
                 "reason": "multi_copy_pruned_to_median"
             })
 
-        if seq_id in aln_records:
-            pruned_seqs[sp] = aln_records[seq_id]
+        rec = aln_records.get(seq_id)
+        if rec is None and aln_records_sanitized is not None:
+            # IQTree replaces '%' with '_' in newick leaf names;
+            # seq_id from the tree has '_252E' while the FASTA key has '%252E'.
+            rec = aln_records_sanitized.get(seq_id)
+        if rec is not None:
+            pruned_seqs[sp] = rec
 
     return pruned_seqs, action_log
 
@@ -168,6 +176,11 @@ def analyze_tree_for_paralogs(tree_path: str, aln_path: str,
     # Load alignment sequences
     try:
         aln_records = {rec.id: rec for rec in SeqIO.parse(aln_path, "fasta")}
+        # IQTree sanitizes sequence names by replacing '%' with '_' in newick output.
+        # Build a fallback lookup keyed by the sanitized (IQTree) name so sequences
+        # with URL-encoded characters (e.g. %252E) are still found.
+        aln_records_sanitized = {rid.replace('%', '_'): rec
+                                  for rid, rec in aln_records.items()}
     except Exception as e:
         return {"hog_id": hog_id, "status": "ALN_READ_ERROR",
                 "reason": str(e), "n_seq_final": 0, "records": None}
@@ -196,7 +209,8 @@ def analyze_tree_for_paralogs(tree_path: str, aln_path: str,
         }
 
     # Prune to one sequence per species
-    pruned_seqs, action_log = prune_to_one_per_species(tree, aln_records)
+    pruned_seqs, action_log = prune_to_one_per_species(tree, aln_records,
+                                                       aln_records_sanitized)
 
     return {
         "hog_id": hog_id,

@@ -158,6 +158,16 @@ for CLADE in "${CLADES_TO_RUN[@]}"; do
         echo "  Processing ${SP_A} × ${SP_B} ..."
 
         PAIR_SHUFFLE_FILE="${CLADE_SHUFFLE_DIR}/${SP_A}__${SP_B}.shuffle_summary.tsv"
+
+        # Skip if already complete (header + N_SHUFFLES lines)
+        if [[ -f "${PAIR_SHUFFLE_FILE}" ]]; then
+            existing_lines=$(wc -l < "${PAIR_SHUFFLE_FILE}")
+            if (( existing_lines >= N_SHUFFLES + 1 )); then
+                echo "    → already done, skipping"
+                continue
+            fi
+        fi
+
         echo -e "replicate\tc_shuffled" > "${PAIR_SHUFFLE_FILE}"
 
         # Temporary directory for this pair's shuffled BEDs

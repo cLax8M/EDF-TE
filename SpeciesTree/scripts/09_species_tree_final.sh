@@ -51,8 +51,9 @@
 #SBATCH --job-name=iqtree_final
 #SBATCH --partition=normal.168h
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=128G
-#SBATCH --time=96:00:00
+#SBATCH --mem=500G
+#SBATCH --exclude=LEGcompute1
+
 #SBATCH --output=/data/carlos/EDF-TE/SpeciesTree/logs/09_final_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/SpeciesTree/logs/09_final_%j.err
 
@@ -66,7 +67,7 @@ SUPERMATRIX="${DIR_CONCAT}/supermatrix.fa"
 GUIDE_TREE="${DIR_GUIDE_TREE}/guide.treefile"
 OUT_DIR="${DIR_FINAL_TREE}"
 PREFIX="${OUT_DIR}/final"
-THREADS=32
+THREADS=AUTO
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 mkdir -p "${OUT_DIR}"

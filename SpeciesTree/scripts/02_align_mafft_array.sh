@@ -30,7 +30,6 @@
 #SBATCH --partition=normal.168h
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=8G
-#SBATCH --time=02:00:00
 #SBATCH --output=/data/carlos/EDF-TE/SpeciesTree/logs/02_mafft_%A_%a.out
 #SBATCH --error=/data/carlos/EDF-TE/SpeciesTree/logs/02_mafft_%A_%a.err
 #SBATCH --array=1-700%50  # Adjust upper bound to actual number of markers; max 50 concurrent

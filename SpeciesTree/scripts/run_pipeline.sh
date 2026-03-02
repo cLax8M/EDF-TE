@@ -225,7 +225,7 @@ INNEREOF
 
         if [[ "${DRY_RUN}" == "false" ]]; then
             SETUP_JOB=$(sbatch --job-name=setup_03 --partition="${PARTITION}" \
-                --cpus-per-task=1 --mem=1G --time=00:05:00 \
+                --cpus-per-task=1 --mem=1G \
                 ${SETUP_DEP} \
                 --wrap="bash ${SETUP_SCRIPT_03}" \
                 --output="${WORK_DIR}/logs/setup03_%j.out" \
@@ -287,7 +287,6 @@ INNEREOF
             --partition="${PARTITION}" \
             --cpus-per-task="${THREADS}" \
             --mem=32G \
-            --time=04:00:00 \
             ${DEP_04} \
             --output="${WORK_DIR}/logs/04_phykit_%j.out" \
             --error="${WORK_DIR}/logs/04_phykit_%j.err" \
@@ -330,7 +329,7 @@ GENE_JOB=\$(sbatch \\
   --array="1-\${N}%30" \\
   --job-name=iqtree_genes \\
   --partition="${PARTITION}" \\
-  --cpus-per-task=4 --mem=16G --time=04:00:00 \\
+  --cpus-per-task=4 --mem=16G \\
   --output="${WORK_DIR}/logs/05_genetrees_%A_%a.out" \\
   --error="${WORK_DIR}/logs/05_genetrees_%A_%a.err" \\
   "${SCRIPT_DIR}/05_gene_trees_array.sh" | awk '{print \$NF}')
@@ -340,7 +339,7 @@ echo "[setup_05] Gene tree array: job \${GENE_JOB} (\${N} trees)"
 JOB_06=\$(sbatch \\
   --job-name=paralog_filter \\
   --partition="${PARTITION}" \\
-  --cpus-per-task=4 --mem=16G --time=02:00:00 \\
+  --cpus-per-task=4 --mem=16G \\
   --dependency=afterok:\${GENE_JOB} \\
   --output="${WORK_DIR}/logs/06_paralogs_%j.out" \\
   --error="${WORK_DIR}/logs/06_paralogs_%j.err" \\
@@ -352,7 +351,7 @@ echo "[setup_05] Step 06 paralog_filter: job \${JOB_06} (waits for gene trees \$
 JOB_07=\$(sbatch \\
   --job-name=concatenate \\
   --partition="${PARTITION}" \\
-  --cpus-per-task=4 --mem=32G --time=01:00:00 \\
+  --cpus-per-task=4 --mem=32G \\
   --dependency=afterok:\${JOB_06} \\
   --output="${WORK_DIR}/logs/07_concat_%j.out" \\
   --error="${WORK_DIR}/logs/07_concat_%j.err" \\
@@ -394,7 +393,7 @@ INNEREOF
             JOB_SETUP_05=$(sbatch \
                 --job-name=setup_05 \
                 --partition="${PARTITION}" \
-                --cpus-per-task=1 --mem=1G --time=00:10:00 \
+                --cpus-per-task=1 --mem=1G \
                 ${DEP_05} \
                 --output="${WORK_DIR}/logs/setup05_%j.out" \
                 --wrap="bash ${SETUP_SCRIPT_05}" \
@@ -426,7 +425,7 @@ if [[ ${START_STEP} -le 6 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
         JOB_06=$(sbatch \
             --job-name=paralog_filter \
             --partition="${PARTITION}" \
-            --cpus-per-task=4 --mem=16G --time=02:00:00 \
+            --cpus-per-task=4 --mem=16G \
             ${DEP_06} \
             --output="${WORK_DIR}/logs/06_paralogs_%j.out" \
             --error="${WORK_DIR}/logs/06_paralogs_%j.err" \
@@ -452,7 +451,7 @@ if [[ ${START_STEP} -le 7 ]] && [[ "${CHAIN_VIA_SETUP5}" == "false" ]]; then
         JOB_07=$(sbatch \
             --job-name=concatenate \
             --partition="${PARTITION}" \
-            --cpus-per-task=4 --mem=32G --time=01:00:00 \
+            --cpus-per-task=4 --mem=32G \
             ${DEP_07} \
             --output="${WORK_DIR}/logs/07_concat_%j.out" \
             --error="${WORK_DIR}/logs/07_concat_%j.err" \

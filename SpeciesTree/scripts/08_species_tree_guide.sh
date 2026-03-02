@@ -31,9 +31,10 @@
 
 #SBATCH --job-name=iqtree_guide
 #SBATCH --partition=normal.168h
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=64G
-#SBATCH --time=24:00:00
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=230G
+#SBATCH --exclude=LEGcompute1
+
 #SBATCH --output=/data/carlos/EDF-TE/SpeciesTree/logs/08_guide_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/SpeciesTree/logs/08_guide_%j.err
 
@@ -46,7 +47,7 @@ source "${SCRIPT_DIR}/config.sh"
 SUPERMATRIX="${DIR_CONCAT}/supermatrix.fa"
 OUT_DIR="${DIR_GUIDE_TREE}"
 PREFIX="${OUT_DIR}/guide"
-THREADS=16
+THREADS=AUTO
 
 # ─── Setup ────────────────────────────────────────────────────────────────────
 mkdir -p "${OUT_DIR}"
@@ -96,7 +97,6 @@ echo "[08] Running IQTree guide tree (LG+F+G4)..."
 iqtree \
     -s "${SUPERMATRIX}" \
     -m LG+F+G4 \
-    -B 1000 \
     -T "${THREADS}" \
     --prefix "${PREFIX}" \
     -redo
