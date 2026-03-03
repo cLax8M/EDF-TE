@@ -8,17 +8,24 @@ For each clade, reads the normalized synteny ratios (step 05) and produces:
   - Output: {FIG_DIR}/{CLADE}_synteny_heatmap.pdf  +  .png
 
 The heatmap diagonal (self-vs-self) is set to 1.0 for visualization.
-Species with fragmented assemblies (flagged by --flag_species) are annotated
-with an asterisk (*) on the axis labels.
+
+Assembly-fragmentation filter:
+  Species whose r_ij_norm == 0 in ALL pairwise comparisons yet share >2000
+  orthologs on average are considered assembly-fragmented (no scaffold-level
+  contiguity → synteny cannot be computed).  They are excluded by default when
+  --exclude_fragmented is set, and a footnote is added to each affected plot.
+  Use --exclude_species to remove specific species manually.
 
 Usage:
   python 06_plot_synteny.py --ratio_dir RATIO_DIR --out_dir FIG_DIR
                             [--clade CLADE ...]  [--all]
+                            [--exclude_fragmented] [--min_orthologs 2000]
+                            [--exclude_species SP1 SP2 ...]
                             [--flag_species SP1 SP2 ...]
                             [--dpi 300]
 
 Author: EDF-TE project
-Last updated: 2026-02-20
+Last updated: 2026-03-03
 """
 
 import argparse
@@ -79,22 +86,61 @@ def parse_args():
     group.add_argument("--clade", action="append", choices=CLADES_ALL)
     group.add_argument("--all", action="store_true")
     p.add_argument("--flag_species", nargs="*", default=[],
-                   help="Species prefixes to flag with * in labels (e.g. fragmented assemblies)")
+                   help="Species to flag with * in labels but keep in the heatmap")
+    p.add_argument("--exclude_species", nargs="*", default=[],
+                   help="Species to remove from every heatmap (explicit list)")
+    p.add_argument("--exclude_fragmented", action="store_true",
+                   help="Auto-detect and exclude species with r=0 in all pairs "
+                        "but >--min_orthologs orthologs (fragmented assemblies)")
+    p.add_argument("--min_orthologs", type=int, default=2000,
+                   help="Ortholog threshold for fragmentation detection (default: 2000)")
     p.add_argument("--dpi", type=int, default=300)
     p.add_argument("--min_pairs", type=int, default=1,
                    help="Minimum species in clade to attempt heatmap (default: 2)")
     return p.parse_args()
 
 
-def load_ratio_matrix(ratio_file, flag_species):
+def detect_fragmented(df, min_orthologs=2000):
+    """
+    Return set of species where r_ij_norm == 0 in ALL pairwise comparisons
+    AND mean n_orthologs > min_orthologs.  These are assembly-fragmented genomes
+    that have plenty of shared genes but zero syntenic blocks.
+    """
+    fragmented = set()
+    all_sp = set(df["species_A"]) | set(df["species_B"])
+    for sp in all_sp:
+        mask = (df["species_A"] == sp) | (df["species_B"] == sp)
+        sub = df[mask]
+        if sub.empty:
+            continue
+        if sub["r_ij_norm"].max() == 0 and sub["n_orthologs"].mean() > min_orthologs:
+            fragmented.add(sp)
+    return fragmented
+
+
+def load_ratio_matrix(ratio_file, flag_species, exclude_species=()):
     """
     Read *_synteny_ratios.tsv and build a symmetric NxN DataFrame
     with r_ij_norm values. Diagonal = 1.0.
-    Returns (matrix_df, label_list).
+    Species in exclude_species are dropped before building the matrix.
+    Returns (matrix_df, label_list, excluded_list).
     """
     df = pd.read_csv(ratio_file, sep="\t")
     if df.empty:
-        return None, []
+        return None, [], []
+
+    exclude_set = set(exclude_species)
+
+    # Record which requested exclusions actually appear in this clade
+    present = set(df["species_A"]) | set(df["species_B"])
+    excluded_here = sorted(present & exclude_set)
+
+    # Drop rows involving excluded species
+    if exclude_set:
+        df = df[~df["species_A"].isin(exclude_set) & ~df["species_B"].isin(exclude_set)]
+
+    if df.empty:
+        return None, [], excluded_here
 
     species = sorted(set(df["species_A"].tolist() + df["species_B"].tolist()))
     n = len(species)
@@ -119,12 +165,19 @@ def load_ratio_matrix(ratio_file, flag_species):
         labels.append(name)
 
     mat_df = pd.DataFrame(mat, index=labels, columns=labels)
-    return mat_df, labels
+    return mat_df, labels, excluded_here
 
 
-def plot_heatmap(mat_df, clade_code, out_dir, dpi=300):
-    """Generate a clustered heatmap and save as PDF + PNG."""
+def plot_heatmap(mat_df, clade_code, out_dir, dpi=300, excluded=None):
+    """Generate a clustered heatmap and save as PDF + PNG.
+    If excluded is a non-empty list, a footnote listing removed species is added.
+    """
     n = len(mat_df)
+
+    footnote = ""
+    if excluded:
+        short = [sp.split("_", 1)[-1] if "_" in sp else sp for sp in excluded]
+        footnote = "Excluded (fragmented assembly): " + ", ".join(short)
 
     if n < 2:
         print(f"    [{clade_code}] Only {n} species — cannot cluster, writing flat heatmap")
@@ -133,7 +186,10 @@ def plot_heatmap(mat_df, clade_code, out_dir, dpi=300):
                     cmap="YlOrRd", annot=True, fmt=".2f",
                     linewidths=0.5, square=True)
         ax.set_title(f"Synteny — {clade_code}", fontsize=11)
-        plt.tight_layout()
+        if footnote:
+            fig.text(0.5, 0.01, footnote, ha="center", va="bottom",
+                     fontsize=7, style="italic", color="#555555")
+        plt.tight_layout(rect=[0, 0.04 if footnote else 0, 1, 1])
         for ext in ("pdf", "png"):
             fig.savefig(Path(out_dir) / f"{clade_code}_synteny_heatmap.{ext}",
                         dpi=dpi, bbox_inches="tight")
@@ -168,6 +224,10 @@ def plot_heatmap(mat_df, clade_code, out_dir, dpi=300):
     plt.setp(g.ax_heatmap.get_yticklabels(),
              rotation=0, fontsize=max(6, 9 - n // 10))
 
+    if footnote:
+        g.fig.text(0.5, 0.005, footnote, ha="center", va="bottom",
+                   fontsize=7, style="italic", color="#555555")
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for ext in ("pdf", "png"):
@@ -181,8 +241,28 @@ def main():
     args = parse_args()
     target_clades = CLADES_ALL if args.all else args.clade
     flag_set = set(args.flag_species)
+    exclude_set = set(args.exclude_species)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Auto-detect fragmented assemblies from the combined ratios file if present
+    if args.exclude_fragmented:
+        combined = Path(args.ratio_dir) / "all_clades_synteny_ratios.tsv"
+        if combined.exists():
+            df_all = pd.read_csv(combined, sep="\t")
+            auto = detect_fragmented(df_all, min_orthologs=args.min_orthologs)
+        else:
+            # Fall back to per-clade files
+            auto = set()
+            for clade in target_clades:
+                rf = Path(args.ratio_dir) / clade / f"{clade}_synteny_ratios.tsv"
+                if rf.exists():
+                    auto |= detect_fragmented(pd.read_csv(rf, sep="\t"),
+                                              min_orthologs=args.min_orthologs)
+        if auto:
+            print(f"Auto-excluded {len(auto)} fragmented-assembly species: "
+                  + ", ".join(sorted(auto)))
+        exclude_set |= auto
 
     for clade in target_clades:
         ratio_file = Path(args.ratio_dir) / clade / f"{clade}_synteny_ratios.tsv"
@@ -190,12 +270,13 @@ def main():
             print(f"  [{clade}] ratio file not found — skipping")
             continue
 
-        mat_df, labels = load_ratio_matrix(ratio_file, flag_set)
+        mat_df, labels, excluded = load_ratio_matrix(ratio_file, flag_set,
+                                                     exclude_species=exclude_set)
         if mat_df is None or len(mat_df) < args.min_pairs:
-            print(f"  [{clade}] insufficient data — skipping")
+            print(f"  [{clade}] insufficient data after filtering — skipping")
             continue
 
-        plot_heatmap(mat_df, clade, out_dir, dpi=args.dpi)
+        plot_heatmap(mat_df, clade, out_dir, dpi=args.dpi, excluded=excluded)
 
     print("Step 06 complete.")
 
