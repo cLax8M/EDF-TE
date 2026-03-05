@@ -56,12 +56,10 @@ RESULTS_DIR="${SCRIPT_DIR}/../results"
 
 mkdir -p "$RESULTS_DIR"
 
-# ── activate R environment if needed ─────────────────────────────────────────
-# If treeWAS is installed in a conda/mamba env, activate it here:
-# source "$(conda info --base)/etc/profile.d/conda.sh"
-# conda activate treewas_env
-# Or load a module:
-# module load R/4.3.0
+# ── activate environment ──────────────────────────────────────────────────────
+export MAMBA_EXE="$(which micromamba)"
+eval "$("$MAMBA_EXE" shell hook --shell bash)"
+micromamba activate treewasEDFTE
 
 # ── run ──────────────────────────────────────────────────────────────────────
 Rscript "${SCRIPT_DIR}/01_run_treewas.R" \
