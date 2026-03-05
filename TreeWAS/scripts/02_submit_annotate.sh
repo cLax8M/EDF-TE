@@ -5,7 +5,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --output=/data/carlos/EDF-TE/EDF-TE/logs/treewas_annot_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/EDF-TE/logs/treewas_annot_%j.err
-#SBATCH --partition=short
+#SBATCH --partition=normal.168h
 
 # Annotate treeWAS results after the array job completes.
 #
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${SLURM_SUBMIT_DIR}/TreeWAS/scripts"
 
 echo "================================================"
 echo "Job: treewas_annot"

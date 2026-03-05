@@ -5,7 +5,7 @@
 #SBATCH --time=4:00:00
 #SBATCH --output=/data/carlos/EDF-TE/EDF-TE/logs/treewas_prep_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/EDF-TE/logs/treewas_prep_%j.err
-#SBATCH --partition=long
+#SBATCH --partition=normal.168h
 
 # Prepare treeWAS input matrices.
 # Submits 01_submit_treewas.sh as a dependent job after completion.
@@ -23,7 +23,7 @@ for arg in "$@"; do
   [[ "$arg" == "--no-submit" ]] && AUTO_SUBMIT=false
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${SLURM_SUBMIT_DIR}/TreeWAS/scripts"
 
 echo "================================================"
 echo "Job: treewas_prep"

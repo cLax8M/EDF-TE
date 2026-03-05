@@ -6,7 +6,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=/data/carlos/EDF-TE/EDF-TE/logs/treewas_%A_%a.out
 #SBATCH --error=/data/carlos/EDF-TE/EDF-TE/logs/treewas_%A_%a.err
-#SBATCH --partition=long
+#SBATCH --partition=normal.168h
 
 # ── treeWAS array job: 8 phenotypes × 2 matrices = 16 runs ──────────────────
 #
@@ -50,9 +50,9 @@ echo "Started          : $(date)"
 echo "================================================"
 
 # ── paths ────────────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-RESULTS_DIR="${SCRIPT_DIR}/../results"
+# SLURM_SUBMIT_DIR = dir from which sbatch was called (repo root when run correctly)
+SCRIPT_DIR="${SLURM_SUBMIT_DIR}/TreeWAS/scripts"
+RESULTS_DIR="${SLURM_SUBMIT_DIR}/TreeWAS/results"
 
 mkdir -p "$RESULTS_DIR"
 

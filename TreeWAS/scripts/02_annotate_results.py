@@ -65,7 +65,10 @@ def collect_results(resultsdir: str) -> pd.DataFrame:
 
     dfs = []
     for f in sorted(files):
-        df = pd.read_csv(f, sep="\t")
+        try:
+            df = pd.read_csv(f, sep="\t")
+        except Exception:
+            continue  # empty or malformed file
         if df.empty:
             continue
         dfs.append(df)
@@ -204,7 +207,7 @@ def main():
         if not top.empty:
             print("\nTop 20 robust hits:")
             display_cols = [c for c in ["feature", "phenotype", "matrix",
-                                         "n_tests_significant", "mean_score",
+                                         "n_tests_significant", "min_p_value",
                                          "description", "is_TE_pfam"]
                             if c in top.columns]
             print(top[display_cols].to_string(index=False))

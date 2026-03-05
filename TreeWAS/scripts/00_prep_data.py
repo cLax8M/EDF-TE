@@ -152,7 +152,8 @@ def load_og_matrix(args, species_set: set, min_count: int) -> pd.DataFrame:
     chunks = []
     reader = pd.read_csv(args.orthogroups, sep="\t", index_col=0, chunksize=5000)
     for chunk in reader:
-        # keep only included species columns
+        # strip .aa/.faa suffix from column names before filtering
+        chunk.columns = [c.replace(".aa", "").replace(".faa", "") for c in chunk.columns]
         cols_keep = [c for c in chunk.columns if c in species_set]
         if not cols_keep:
             continue
@@ -168,11 +169,8 @@ def load_og_matrix(args, species_set: set, min_count: int) -> pd.DataFrame:
         raise RuntimeError("No OrthoGroups passed the frequency filter — check paths and species names.")
 
     og = pd.concat(chunks)
-    # column names in OG file have '.aa' suffix — strip to match species names
-    og.columns = [c.replace(".aa", "").replace(".faa", "") for c in og.columns]
-    # re-check species alignment after stripping
+    # recompute filter after concatenation (chunks filtered independently)
     og = og[[c for c in og.columns if c in species_set]]
-    # recompute filter after column rename
     og = og[og.sum(axis=1) >= min_count]
     # transpose: species × OGs
     og = og.T
@@ -285,6 +283,7 @@ def main():
     og = load_og_matrix(args, species_set, min_count)
     ipr = load_ipr_matrix(args, species_set, min_count)
 
+    os.makedirs(args.outdir, exist_ok=True)   # ensure outdir exists before tree write
     prune_tree(args, species_set, args.outdir)
     write_outputs(pheno, og, ipr, args.outdir)
 

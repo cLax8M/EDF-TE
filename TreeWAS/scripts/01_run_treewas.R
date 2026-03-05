@@ -99,16 +99,18 @@ storage.mode(x_mat) <- "integer"
 cat(sprintf("    Running treeWAS (n.snps.sim=%d) …\n", opt$n_sim))
 set.seed(42)
 res <- treeWAS(
-  snps       = x_mat,
-  phen       = phen,
-  tree       = tree,
-  n.snps.sim = opt$n_sim,
-  test       = c("terminal", "simultaneous", "subsequent"),
-  correction = "bonferroni",
-  plot.tree  = FALSE,
-  plot.dist  = FALSE,
-  plot.null  = FALSE,
-  verbose    = TRUE
+  snps             = x_mat,
+  phen             = phen,
+  tree             = tree,
+  n.snps.sim       = opt$n_sim,
+  test             = c("terminal", "simultaneous", "subsequent"),
+  p.value          = 0.01,
+  p.value.correct  = "bonf",
+  p.value.by       = "count",
+  plot.tree        = FALSE,
+  plot.manhattan   = FALSE,
+  plot.null.dist   = FALSE,
+  plot.dist        = FALSE
 )
 
 # ── save full object ──────────────────────────────────────────────────────────
@@ -118,30 +120,22 @@ cat(sprintf("    Saved: %s\n", rds_path))
 
 # ── extract hits per test ─────────────────────────────────────────────────────
 extract_hits <- function(res_obj, test_name) {
-  # treeWAS stores results in a list keyed by test name
-  slot_name <- switch(test_name,
-    "terminal"     = "terminal",
-    "simultaneous" = "simultaneous",
-    "subsequent"   = "subsequent",
-    stop("Unknown test: ", test_name)
-  )
-  r <- res_obj[[slot_name]]
+  r <- res_obj[[test_name]]
   if (is.null(r)) return(data.frame())
 
-  # significant features are those where p.value (or statistic) crosses threshold
-  # treeWAS output: res$terminal$sig gives a logical vector
-  if (!is.null(r$sig) && any(r$sig)) {
-    feats <- names(r$sig)[r$sig]
-    scores <- if (!is.null(r$score)) r$score[feats] else rep(NA_real_, length(feats))
-    data.frame(
-      feature  = feats,
-      score    = scores,
-      test     = test_name,
-      stringsAsFactors = FALSE
-    )
-  } else {
-    data.frame()
+  sig_df <- r$sig.snps
+  # when no hits, treeWAS sets sig.snps = "No significant SNPs found." (character)
+  if (is.null(sig_df) || is.character(sig_df) || !is.data.frame(sig_df) || nrow(sig_df) == 0) {
+    return(data.frame())
   }
+
+  data.frame(
+    feature  = rownames(sig_df),
+    p_value  = sig_df$p.value,
+    score    = sig_df$score,
+    test     = test_name,
+    stringsAsFactors = FALSE
+  )
 }
 
 tests <- c("terminal", "simultaneous", "subsequent")
@@ -162,11 +156,13 @@ if (nrow(all_hits) > 0) {
   test_names  <- aggregate(test ~ feature, data = all_hits,
                             FUN = function(x) paste(sort(x), collapse = ","))
   colnames(test_names)[2] <- "tests_significant"
+  pvals_agg   <- aggregate(p_value ~ feature, data = all_hits, FUN = min, na.rm = TRUE)
+  colnames(pvals_agg)[2] <- "min_p_value"
   scores_agg  <- aggregate(score ~ feature, data = all_hits, FUN = mean, na.rm = TRUE)
   colnames(scores_agg)[2] <- "mean_score"
 
   summary_df <- Reduce(function(a, b) merge(a, b, by = "feature"),
-                       list(test_counts, test_names, scores_agg))
+                       list(test_counts, test_names, pvals_agg, scores_agg))
   summary_df$robust <- summary_df$n_tests_significant >= 2
   summary_df$phenotype <- opt$phenotype
   summary_df$matrix    <- matrix_label
