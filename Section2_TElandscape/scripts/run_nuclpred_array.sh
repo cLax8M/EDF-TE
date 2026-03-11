@@ -30,7 +30,8 @@
 set -euo pipefail
 
 # ── environment ───────────────────────────────────────────────
-conda activate nuclpred
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate nuclpred
 
 # ── paths ────────────────────────────────────────────────────
 GENOMES_DIR="/legserv/Temp/Carlos/EDF-TE/data/genomes"

@@ -29,6 +29,12 @@
 
 set -euo pipefail
 
+# ── environment ───────────────────────────────────────────────
+# Co-option scripts require Python 3 + pandas.
+# Use the earlgrey micromamba env (has pandas) or any env with pandas.
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate earlgrey
+
 # ── paths ───────────────────────────────────────────────────
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COOPTION_DIR="/legserv/Temp/Carlos/EDF-TE/results/Co-option"

@@ -27,7 +27,8 @@
 set -euo pipefail
 
 # ── environment ───────────────────────────────────────────────
-conda activate nucseq_pipeline
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate nucseq_pipeline
 
 # ── paths ────────────────────────────────────────────────────
 GENOMES_DIR="/legserv/Temp/Carlos/EDF-TE/data/genomes"
@@ -92,7 +93,7 @@ fi
 
 # ── Step 2: QC with BBDuk ─────────────────────────────────────
 echo "[2/5] QC with BBDuk..."
-ADAPTERS_REF="$(conda info --base)/pkgs/bbtools-*/resources/adapters.fa"
+ADAPTERS_REF="$(micromamba info --base)/pkgs/bbtools-*/resources/adapters.fa"
 ADAPTERS_REF=$(ls ${ADAPTERS_REF} 2>/dev/null | head -1 || echo "adapters")
 
 if [[ -n "${R2}" ]]; then
