@@ -1,0 +1,58 @@
+# Large data files — never commit
+*.fasta
+*.fa
+*.fna
+*.fastq
+*.fq
+*.gz
+*.bam
+*.sam
+*.bai
+*.wig
+*.bed
+*.gff
+*.gff3
+*.tsv
+*.tab
+*.txt
+*.pdf
+*.png
+*.svg
+
+# Exceptions — small config/reference files that belong in the repo
+!TE_analysis/Library_curation/TE_domains_master.tsv
+!**/config/*.tsv
+!**/config/*.txt
+!**/dry_run_*.tsv
+!**/*.yml
+!**/*.yaml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+Rplots.pdf
+
+# Logs
+logs/
+*.log
+*.err
+*.out
+
+# SLURM temporary
+slurm-*.out
+*.sbatch.tmp
+
+# macOS / Synology
+.DS_Store
+@eaDir/
+._*
