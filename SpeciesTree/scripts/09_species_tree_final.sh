@@ -49,9 +49,9 @@
 # =============================================================================
 
 #SBATCH --job-name=iqtree_final
-#SBATCH --partition=normal.168h
+#SBATCH --partition=normal.1000h
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=500G
+#SBATCH --mem=400G
 #SBATCH --exclude=LEGcompute1
 
 #SBATCH --output=/data/carlos/EDF-TE/SpeciesTree/logs/09_final_%j.out
@@ -136,7 +136,8 @@ if [[ "${USE_GUIDE}" == "true" ]]; then
         -T "${THREADS}" \
         -t "${GUIDE_TREE}" \
         --prefix "${PREFIX}" \
-        -redo
+        -mem 400G \
+        -nstop 20
 else
     echo "     No guide tree — running from random starting tree"
     iqtree \
@@ -145,7 +146,8 @@ else
         -B 1000 \
         -T "${THREADS}" \
         --prefix "${PREFIX}" \
-        -redo
+        -mem 400G \
+        -nstop 20
 fi
 
 # Verify output

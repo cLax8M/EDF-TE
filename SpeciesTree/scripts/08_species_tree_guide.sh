@@ -99,7 +99,7 @@ iqtree \
     -m LG+F+G4 \
     -T "${THREADS}" \
     --prefix "${PREFIX}" \
-    -redo
+    -nstop 20
 
 # Verify output
 if [[ ! -f "${PREFIX}.treefile" ]]; then

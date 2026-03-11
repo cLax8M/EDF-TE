@@ -77,11 +77,12 @@ fi
 echo "[START] ${SP}"
 
 # ── Step 1: DNA shape parameters ──────────────────────────────
+# DNAshapeR is installed in treewasEDFTE (R 4.4 + Bioconductor)
 echo "[1/3] Computing DNA shape parameters..."
 SHAPES_DIR="${SHAPES_BASE}/${SP}"
 mkdir -p "${SHAPES_DIR}"
 
-Rscript "${SCRIPTS_DIR}/run_dnashape.R" "${GENOME_FA}" "${SHAPES_DIR}"
+micromamba run -n treewasEDFTE Rscript "${SCRIPTS_DIR}/run_dnashape.R" "${GENOME_FA}" "${SHAPES_DIR}"
 
 # ── Step 2: generate input matrix ─────────────────────────────
 echo "[2/3] Generating NuclPred input matrix..."
@@ -96,10 +97,11 @@ python3 "${NUCLPRED_DIR}/generate_matrix.py" \
 echo "[INFO] Matrix rows: $(wc -l < "${MATRIX_FILE}")"
 
 # ── Step 3: predict nucleosome occupancy ──────────────────────
+# NOTE: predict_nucleosomes.py loads models/ with a relative path,
+#       so we must cd to NUCLPRED_DIR before running it.
 echo "[3/3] Running NuclPred prediction..."
-python3 "${NUCLPRED_DIR}/predict_nucleosomes.py" \
-    --input "${MATRIX_FILE}" \
-    > "${OUT_WIG}"
+(cd "${NUCLPRED_DIR}" && python3 predict_nucleosomes.py \
+    --input "${MATRIX_FILE}") > "${OUT_WIG}"
 
 echo "[DONE] ${SP} → ${OUT_WIG}"
 

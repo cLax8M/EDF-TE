@@ -71,7 +71,8 @@ mkdir -p "${SP_OUT}"
 echo "[START] ${SPECIES} — SRR: ${SRR_ID}"
 
 # ── skip if already complete ──────────────────────────────────
-if [[ -f "${SP_OUT}/${SPECIES}_danpos/pooled/${SPECIES}.wig" ]]; then
+# DANPOS3 output: pooled/<input_basename>.Frag.wig
+if [[ -f "${SP_OUT}/${SPECIES}_danpos/pooled/${SPECIES}_dedup.Frag.wig" ]]; then
     echo "[SKIP] Already complete: ${SPECIES}"
     exit 0
 fi
@@ -93,8 +94,8 @@ fi
 
 # ── Step 2: QC with BBDuk ─────────────────────────────────────
 echo "[2/5] QC with BBDuk..."
-ADAPTERS_REF="$(micromamba info --base)/pkgs/bbtools-*/resources/adapters.fa"
-ADAPTERS_REF=$(ls ${ADAPTERS_REF} 2>/dev/null | head -1 || echo "adapters")
+ADAPTERS_REF=$(ls "${CONDA_PREFIX}/opt/bbmap"*/resources/adapters.fa 2>/dev/null | head -1)
+[[ -z "${ADAPTERS_REF}" ]] && ADAPTERS_REF="adapters"
 
 if [[ -n "${R2}" ]]; then
     bbduk.sh \
@@ -154,8 +155,9 @@ samtools index "${TMPDIR}/${SPECIES}_dedup.bam"
 
 # ── Step 5: DANPOS nucleosome calling ─────────────────────────
 echo "[5/5] DANPOS nucleosome occupancy calling..."
+DANPOS3="/data/carlos/EDF-TE/TE_analysis/DANPOS3/danpos.py"
 mkdir -p "${SP_OUT}/${SPECIES}_danpos"
-python $(which danpos.py) dpos \
+python "${DANPOS3}" dpos \
     "${TMPDIR}/${SPECIES}_dedup.bam" \
     -m 1 -a 1 \
     -o "${SP_OUT}/${SPECIES}_danpos"
