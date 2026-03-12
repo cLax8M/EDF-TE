@@ -330,6 +330,49 @@ if has_umap:
     plt.close()
     print(f"[OK] UMAP → {out_umap}")
 
+# ── 7b. Presence/absence PCoA (Jaccard distance, superfamily level) ──────────
+# Binarize: SF present (>0 bp) = 1, absent = 0
+bin_mat = (prop_mat > 0).astype(float)
+
+# Pairwise Jaccard distances
+from scipy.spatial.distance import pdist, squareform as _squareform
+D_jacc = _squareform(pdist(bin_mat.values, metric="jaccard"))
+
+# Classical PCoA (Gower 1966 / double-centering)
+_n = D_jacc.shape[0]
+_D2 = D_jacc ** 2
+_H  = np.eye(_n) - np.ones((_n, _n)) / _n
+_B  = -0.5 * _H @ _D2 @ _H
+_eigvals, _eigvecs = np.linalg.eigh(_B)
+_idx = np.argsort(_eigvals)[::-1]
+_eigvals, _eigvecs = _eigvals[_idx], _eigvecs[:, _idx]
+_pos = _eigvals > 1e-10
+_eigvals_pos = _eigvals[_pos]
+coords_pcoa_pa = _eigvecs[:, _pos] * np.sqrt(_eigvals_pos)
+var_pa = _eigvals_pos / _eigvals_pos.sum() * 100
+
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+draw_ordination(axes[0], coords_pcoa_pa[:, :2], sp_list,
+    "P/A PCoA (Jaccard) — PCo1 vs PCo2",
+    f"PCo1 ({var_pa[0]:.1f}%)", f"PCo2 ({var_pa[1]:.1f}%)")
+draw_ordination(axes[1], coords_pcoa_pa[:, 2:4], sp_list,
+    "P/A PCoA (Jaccard) — PCo3 vs PCo4",
+    f"PCo3 ({var_pa[2]:.1f}%)", f"PCo4 ({var_pa[3]:.1f}%)")
+group_handles = [mpatches.Patch(color=GROUP_COLORS[g], label=g, alpha=0.8)
+                 for g in ["Holozoa","Nucleariida","EDF","Dikarya"]]
+fig.legend(handles=group_handles + clade_legend_handles(),
+           loc="lower center", ncol=10, fontsize=7,
+           frameon=False, bbox_to_anchor=(0.5, -0.05))
+fig.suptitle("TE superfamily presence/absence — PCoA (Jaccard distance)\n"
+             "(dashed grey = MST on clade centroids)",
+             fontsize=13, y=1.01)
+plt.tight_layout(rect=[0, 0.06, 1, 1])
+out_pa = os.path.join(OUT_DIR, "merenyi_pcoa_pa.pdf")
+fig.savefig(out_pa, dpi=150, bbox_inches="tight")
+plt.close()
+print(f"[OK] P/A PCoA (Jaccard) → {out_pa}")
+print(f"[INFO] P/A PCoA variance: PCo1={var_pa[0]:.1f}%  PCo2={var_pa[1]:.1f}%")
+
 # ── 8. Print variance explained and top loading SFs ──────────────────────────
 print("\n[INFO] Variance explained:")
 for i, v in enumerate(var_exp[:4], 1):
