@@ -36,7 +36,7 @@ eval "$(micromamba shell hook --shell bash)"
 micromamba activate earlgrey
 
 # ── paths ───────────────────────────────────────────────────
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS_DIR="/data/carlos/EDF-TE/EDF-TE/Cooption/scripts"
 COOPTION_DIR="/legserv/Temp/Carlos/EDF-TE/results/Co-option"
 FUSIONS_DIR="${COOPTION_DIR}/per_species/fusions"
 DOMAINS_DIR="${COOPTION_DIR}/per_species/domains"

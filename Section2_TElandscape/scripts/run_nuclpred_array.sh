@@ -36,7 +36,7 @@ micromamba activate nuclpred
 # ── paths ────────────────────────────────────────────────────
 GENOMES_DIR="/legserv/Temp/Carlos/EDF-TE/data/genomes"
 NUCLPRED_DIR="/data/carlos/EDF-TE/TE_analysis/NuclPred_v1"
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS_DIR="/data/carlos/EDF-TE/EDF-TE/Section2_TElandscape/scripts"
 OUT_DIR="/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/nucleosomes/nuclpred"
 SHAPES_BASE="/data/carlos/EDF-TE/TE_analysis/nucleosomes/shapes"
 SPECIES_LIST="${SCRIPTS_DIR}/species_nuclpred.txt"

@@ -1,24 +1,37 @@
 #!/usr/bin/env python3
 """
-Annotate treeWAS robust genome-size OGs with IPR domains.
+Annotate treeWAS robust OGs with IPR domains.
 
-For each robust OG from log10_Genome_Size_OG, looks up all member proteins
-in the per-species IPR annotation files and identifies TE-related functions.
+Works for any treeWAS phenotype directory that contains summary.tsv
+with 'feature' and 'robust' columns.
 
 Usage:
-    python annotate_og_ipr.py
+    python annotate_og_ipr.py --phenotype Avg_Exons_Per_Gene_OG
+    python annotate_og_ipr.py --phenotype mean_r_intra_OG
+    python annotate_og_ipr.py --phenotype log10_Genome_Size_OG
 """
 
 import os
 import csv
 import sys
+import argparse
 from collections import defaultdict
 
-# ─── Paths ───────────────────────────────────────────────────────────────────
-SUMMARY_TSV    = "/data/carlos/EDF-TE/EDF-TE/TreeWAS/results/log10_Genome_Size_OG/summary.tsv"
+# ─── CLI ─────────────────────────────────────────────────────────────────────
+RESULTS_BASE    = "/data/carlos/EDF-TE/EDF-TE/TreeWAS/results"
 ORTHOGROUPS_TSV = "/legserv/Temp/Carlos/EDF-TE/results/Orthofinder_run/Orthogroups/Orthogroups.tsv"
-IPR_DIR        = "/legserv/Temp/Carlos/EDF-TE/data/functional_interpro"
-OUTPUT_TSV     = "/data/carlos/EDF-TE/EDF-TE/TreeWAS/results/log10_Genome_Size_OG/og_ipr_annotation.tsv"
+IPR_DIR         = "/legserv/Temp/Carlos/EDF-TE/data/functional_interpro"
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--phenotype", required=True,
+                    help="Subdirectory name under results/, e.g. Avg_Exons_Per_Gene_OG")
+args = parser.parse_args()
+
+SUMMARY_TSV = os.path.join(RESULTS_BASE, args.phenotype, "summary.tsv")
+OUTPUT_TSV  = os.path.join(RESULTS_BASE, args.phenotype, "og_ipr_annotation.tsv")
+
+if not os.path.exists(SUMMARY_TSV):
+    sys.exit(f"ERROR: {SUMMARY_TSV} not found")
 
 # ─── TE-related keywords ─────────────────────────────────────────────────────
 TE_KEYWORDS = [
@@ -44,14 +57,16 @@ def parse_protein_id(prot_id: str) -> str:
     return prot_id            # NCBI accession, used as-is
 
 # ─── Step 1: Load robust OGs ─────────────────────────────────────────────────
-print("Loading robust OGs ...", file=sys.stderr)
+print(f"[{args.phenotype}] Loading robust OGs ...", file=sys.stderr)
 robust_ogs = set()
 robust_meta = {}
 with open(SUMMARY_TSV) as f:
     reader = csv.DictReader(f, delimiter="\t")
     for row in reader:
-        if row["robust"].strip() == "TRUE":
+        if row["robust"].strip().upper() == "TRUE":
             og = row["feature"].strip()
+            if not og.startswith("OG"):
+                continue   # skip IPR features in mixed-matrix files
             robust_ogs.add(og)
             robust_meta[og] = {
                 "n_tests":  row["n_tests_significant"].strip(),
@@ -59,6 +74,9 @@ with open(SUMMARY_TSV) as f:
                 "score":    row["mean_score"].strip(),
             }
 print(f"  {len(robust_ogs)} robust OGs found", file=sys.stderr)
+if not robust_ogs:
+    print("No robust OGs — nothing to annotate.", file=sys.stderr)
+    sys.exit(0)
 
 # ─── Step 2: Build species → IPR file mapping ────────────────────────────────
 # IPR filenames: PREFIX_SPECIESCODE_IPR.tab → key = PREFIX_SPECIESCODE
@@ -175,7 +193,6 @@ for og_id in robust_ogs:
 
 # ─── Step 7: Write full output table ─────────────────────────────────────────
 print(f"Writing {OUTPUT_TSV} ...", file=sys.stderr)
-os.makedirs(os.path.dirname(OUTPUT_TSV), exist_ok=True)
 
 with open(OUTPUT_TSV, "w") as out:
     out.write("og_id\tn_tests\ttests_significant\tmean_score\t"
@@ -206,7 +223,7 @@ te_ogs = {
 te_ogs = {og: hits for og, hits in te_ogs.items() if hits}
 
 print(f"\n{'='*60}")
-print(f"TE-RELATED IPR HITS IN ROBUST log10_Genome_Size OGs")
+print(f"TE-RELATED IPR HITS IN ROBUST {args.phenotype} OGs")
 print(f"{'='*60}")
 if not te_ogs:
     print("No TE-related IPR domains found in any robust genome-size OG.")
@@ -222,16 +239,18 @@ else:
 
 # ─── Print top-5 IPR per OG (for context) ────────────────────────────────────
 print(f"\n{'='*60}")
-print("TOP-3 IPR DOMAINS PER ROBUST OG (by protein count)")
+print(f"TOP-3 IPR DOMAINS PER ROBUST OG — {args.phenotype}")
 print(f"{'='*60}")
-for og_id in sorted(og_summary.keys()):
+for og_id in sorted(og_summary.keys(), key=lambda x: -abs(float(robust_meta[x]["score"]))):
     data = og_summary[og_id]
     ipr  = data["ipr"]
     meta = robust_meta[og_id]
     top3 = sorted(ipr.items(), key=lambda x: -x[1]["count"])[:3]
-    te_flag = "** TE **" if og_id in te_ogs else ""
-    print(f"\n{og_id}  {te_flag}  [n_prots={data['total_prots']}, "
-          f"annotated={data['annotated_prots']}, tests={meta['tests']}]")
+    te_flag = "  ** TE **" if og_id in te_ogs else ""
+    print(f"\n{og_id}{te_flag}  [score={meta['score']}, tests={meta['tests']}, "
+          f"n_prots={data['total_prots']}, annotated={data['annotated_prots']}]")
     for ipr_id, info in top3:
         te_marker = " [TE]" if info["te"] else ""
         print(f"  {ipr_id}: {info['desc']} (n={info['count']}){te_marker}")
+
+print(f"\nDone. Output: {OUTPUT_TSV}", file=sys.stderr)
