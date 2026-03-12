@@ -37,6 +37,7 @@ import pandas as pd
 from scipy.spatial.distance import pdist, squareform
 from scipy.spatial import ConvexHull
 from sklearn.decomposition import PCA
+import networkx as nx
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -72,6 +73,20 @@ GROUP_ALPHA = {
     "Holozoa": 0.85, "Nucleariida": 0.85,
     "EDF": 0.55,     "Dikarya": 0.55,
 }
+
+# Per-clade distinct colors: EDF = yellow→green gradient, HO = reds, NU = orange,
+# AS = cornflower blues, BA = navy blues
+import matplotlib.cm as _cm
+_edf_sorted = ["AP","BL","BS","CH","CR","EN","GL","KX","MI","MO","MU","OL","ZO"]
+_edf_cmap   = _cm.YlGn(np.linspace(0.35, 0.95, len(_edf_sorted)))
+
+CLADE_COLORS = {cl: _edf_cmap[i] for i, cl in enumerate(_edf_sorted)}
+CLADE_COLORS.update({
+    "HO": "#e63946",
+    "NU": "#f4a261",
+    "AS": "#4a90d9",
+    "BA": "#1d3557",
+})
 
 # Per-clade marker shapes (so you can still distinguish clades within groups)
 CLADE_MARKERS = {
@@ -184,20 +199,18 @@ except ImportError:
     print("[WARN] umap-learn not available, skipping UMAP")
 
 # ── 5. helper: draw one ordination panel ──────────────────────────────────────
-def draw_ordination(ax, coords, sp_names, title, xlabel, ylabel):
-    groups_present = []
+def draw_ordination(ax, coords, sp_names, title, xlabel, ylabel, draw_mst=True):
+    # Scatter: each point colored by clade, shaped by clade
     for sp, xy in zip(sp_names, coords):
-        clade = sp[:2]
-        group = BROAD_GROUP.get(clade, "EDF")
-        if group not in groups_present:
-            groups_present.append(group)
+        clade  = sp[:2]
+        group  = BROAD_GROUP.get(clade, "EDF")
         marker = CLADE_MARKERS.get(clade, "o")
-        color  = GROUP_COLORS[group]
-        alpha  = GROUP_ALPHA[group]
-        ax.scatter(xy[0], xy[1], c=color, marker=marker,
+        color  = CLADE_COLORS.get(clade, GROUP_COLORS.get(group, "#888888"))
+        alpha  = GROUP_ALPHA.get(group, 0.7)
+        ax.scatter(xy[0], xy[1], c=[color], marker=marker,
                    s=35, alpha=alpha, linewidths=0.3, edgecolors="white", zorder=3)
 
-    # Convex hulls per broad group
+    # Convex hulls per broad group (background shading)
     group_coords = {}
     for sp, xy in zip(sp_names, coords):
         g = BROAD_GROUP.get(sp[:2], "EDF")
@@ -209,15 +222,39 @@ def draw_ordination(ax, coords, sp_names, title, xlabel, ylabel):
             continue
         try:
             hull = ConvexHull(pts)
-            hull_pts = np.append(hull.vertices, hull.vertices[0])
             ax.fill(pts[hull.vertices, 0], pts[hull.vertices, 1],
-                    alpha=0.10, color=GROUP_COLORS[group])
+                    alpha=0.07, color=GROUP_COLORS[group])
+            hull_pts = np.append(hull.vertices, hull.vertices[0])
             ax.plot(pts[hull_pts, 0], pts[hull_pts, 1],
-                    color=GROUP_COLORS[group], lw=1.5, alpha=0.7)
+                    color=GROUP_COLORS[group], lw=1.2, alpha=0.5)
         except Exception:
             pass
 
-    # Label centroid of each group
+    # Minimum spanning tree on clade centroids
+    if draw_mst:
+        # Compute centroid per clade
+        clade_coords = {}
+        for sp, xy in zip(sp_names, coords):
+            cl = sp[:2]
+            clade_coords.setdefault(cl, []).append(xy)
+        centroids = {cl: np.array(pts).mean(axis=0)
+                     for cl, pts in clade_coords.items() if len(pts) >= 1}
+        clade_names = sorted(centroids.keys())
+        if len(clade_names) >= 2:
+            G = nx.Graph()
+            for i, ci in enumerate(clade_names):
+                for j, cj in enumerate(clade_names):
+                    if i < j:
+                        dist = np.linalg.norm(centroids[ci] - centroids[cj])
+                        G.add_edge(ci, cj, weight=dist)
+            mst = nx.minimum_spanning_tree(G)
+            for u, v in mst.edges():
+                xu, yu = centroids[u]
+                xv, yv = centroids[v]
+                ax.plot([xu, xv], [yu, yv], color="0.55", lw=1.0,
+                        ls="--", zorder=2, alpha=0.8)
+
+    # Label centroid of each broad group
     for group, pts in group_coords.items():
         pts = np.array(pts)
         cx, cy = pts.mean(axis=0)
@@ -237,9 +274,12 @@ def draw_ordination(ax, coords, sp_names, title, xlabel, ylabel):
 def clade_legend_handles():
     handles = []
     for clade, marker in sorted(CLADE_MARKERS.items()):
-        group = BROAD_GROUP.get(clade, "EDF")
+        color = CLADE_COLORS.get(clade, "#888888")
+        # convert numpy array color to tuple if needed
+        if hasattr(color, "__len__") and not isinstance(color, str):
+            color = tuple(color)
         h = Line2D([0],[0], marker=marker, color="w",
-                   markerfacecolor=GROUP_COLORS[group],
+                   markerfacecolor=color,
                    markeredgecolor="0.4", markersize=6, label=clade)
         handles.append(h)
     return handles
