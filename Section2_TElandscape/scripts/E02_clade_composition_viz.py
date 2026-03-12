@@ -1,0 +1,316 @@
+#!/usr/bin/env python3
+"""
+E02_clade_composition_viz.py
+============================
+Visualise TE class composition outliers within each clade.
+
+Outputs:
+  1. clade_stacked_bars.pdf  — one subplot per clade, each species = stacked bar
+                               coloured by TE class; outlier species labelled in red
+  2. clade_deviation_heatmap.pdf — heatmap of (species_proportion - clade_mean)
+                               per TE class; clades separated by white lines;
+                               outlier species marked with ★
+
+Reads:
+  - EarlGrey highLevelCount.txt files  (same as E01)
+  - clade_outliers.tsv produced by E01 (to get outlier flags)
+
+Usage:
+  python3 E02_clade_composition_viz.py [EARLGREY_DIR] [OUTLIERS_TSV] [OUT_DIR]
+"""
+
+import sys, os, glob, warnings
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.gridspec import GridSpec
+import seaborn as sns
+
+# ── config ────────────────────────────────────────────────────────────────────
+EARLGREY_DIR  = sys.argv[1] if len(sys.argv) > 1 else \
+    "/data/carlos/EDF-TE/TE_analysis/annotated"
+OUTLIERS_TSV  = sys.argv[2] if len(sys.argv) > 2 else \
+    "/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/clade_outliers/clade_outliers.tsv"
+OUT_DIR       = sys.argv[3] if len(sys.argv) > 3 else \
+    "/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/clade_outliers"
+
+os.makedirs(OUT_DIR, exist_ok=True)
+
+CLASS_MAP = {
+    "DNA":                   "DNA",
+    "DNA-nested":            "DNA",
+    "Rolling Circle":        "Rolling Circle",
+    "Rolling Circle-nested": "Rolling Circle",
+    "Penelope":              "Penelope",
+    "Penelope-nested":       "Penelope",
+    "LINE":                  "LINE",
+    "LINE-nested":           "LINE",
+    "SINE":                  "SINE",
+    "SINE-nested":           "SINE",
+    "LTR":                   "LTR",
+    "LTR-nested":            "LTR",
+    "Unclassified":          "Unclassified",
+    "Unclassified-nested":   "Unclassified",
+}
+TE_CLASSES = ["LTR", "DNA", "LINE", "SINE", "Rolling Circle", "Penelope", "Unclassified"]
+
+# Colour palette — one per TE class, fixed
+CLASS_COLORS = {
+    "LTR":           "#e63946",
+    "DNA":           "#457b9d",
+    "LINE":          "#2a9d8f",
+    "SINE":          "#e9c46a",
+    "Rolling Circle":"#f4a261",
+    "Penelope":      "#a8dadc",
+    "Unclassified":  "#adb5bd",
+}
+
+# ── 1. parse EarlGrey files ───────────────────────────────────────────────────
+records = []
+for fp in sorted(glob.glob(os.path.join(EARLGREY_DIR,
+                 "*_EarlGrey", "*_summaryFiles", "*.highLevelCount.txt"))):
+    sp = os.path.basename(fp).replace(".highLevelCount.txt", "")
+    clade = sp[:2]
+    bp_by_class = {c: 0.0 for c in TE_CLASSES}
+    genome_size = None
+    total_bp = 0.0
+    try:
+        df = pd.read_csv(fp, sep="\t")
+        df.columns = [c.strip() for c in df.columns]
+        class_col = [c for c in df.columns if "Classification" in c][0]
+        bp_col    = [c for c in df.columns if "Coverage (bp)"   in c][0]
+        size_col  = [c for c in df.columns if "Genome Size"      in c][0]
+        for _, r in df.iterrows():
+            cls = str(r[class_col]).strip()
+            bp  = float(r[bp_col]) if str(r[bp_col]) not in ("NA","nan","") else 0.0
+            if cls in CLASS_MAP:
+                bp_by_class[CLASS_MAP[cls]] += bp
+            if "Total Interspersed" in cls:
+                total_bp = bp
+            if genome_size is None:
+                try: genome_size = float(r[size_col])
+                except: pass
+        row = {"species": sp, "clade": clade,
+               "total_TE_pct": total_bp / genome_size * 100 if genome_size else np.nan}
+        for c in TE_CLASSES:
+            row[c] = bp_by_class[c]
+        records.append(row)
+    except Exception as e:
+        print(f"[WARN] {sp}: {e}")
+
+df_all = pd.DataFrame(records)
+
+# Compute proportions (fraction of total TE bp)
+total_te_bp = df_all[TE_CLASSES].sum(axis=1).replace(0, np.nan)
+for c in TE_CLASSES:
+    df_all[f"prop_{c}"] = df_all[c] / total_te_bp
+prop_cols = [f"prop_{c}" for c in TE_CLASSES]
+
+print(f"[INFO] {len(df_all)} species, {df_all['clade'].nunique()} clades")
+
+# ── 2. load outlier flags ─────────────────────────────────────────────────────
+if os.path.exists(OUTLIERS_TSV):
+    df_flags = pd.read_csv(OUTLIERS_TSV, sep="\t")[
+        ["species", "outlier_univariate", "outlier_composition"]]
+    df_all = df_all.merge(df_flags, on="species", how="left")
+    df_all["outlier_univariate"]  = df_all["outlier_univariate"].fillna(False)
+    df_all["outlier_composition"] = df_all["outlier_composition"].fillna(False)
+else:
+    df_all["outlier_univariate"]  = False
+    df_all["outlier_composition"] = False
+
+# ── 3. PLOT 1: stacked bars per clade ─────────────────────────────────────────
+clades = sorted(df_all["clade"].unique())
+n_clades = len(clades)
+
+# Figure layout: grid of subplots, ~4 per row
+ncols = 4
+nrows = int(np.ceil(n_clades / ncols))
+fig, axes = plt.subplots(nrows, ncols,
+                          figsize=(ncols * 5, nrows * 4.5),
+                          squeeze=False)
+fig.suptitle("TE class composition by clade\n"
+             "(red labels = composition outliers  |  ★ = total-TE outlier)",
+             fontsize=14, y=1.01)
+
+for ax_idx, clade in enumerate(clades):
+    row_i, col_i = divmod(ax_idx, ncols)
+    ax = axes[row_i][col_i]
+
+    sub = df_all[df_all["clade"] == clade].copy()
+    # Sort species by total TE% so bars go low→high
+    sub = sub.sort_values("total_TE_pct", ascending=True).reset_index(drop=True)
+    n = len(sub)
+
+    x = np.arange(n)
+    bottom = np.zeros(n)
+    for cls in TE_CLASSES:
+        vals = sub[f"prop_{cls}"].fillna(0).values
+        ax.bar(x, vals, bottom=bottom, color=CLASS_COLORS[cls],
+               label=cls, width=0.85, edgecolor="none")
+        bottom += vals
+
+    ax.set_xlim(-0.5, n - 0.5)
+    ax.set_ylim(0, 1)
+    ax.set_title(f"{clade}  (n={n})", fontsize=10, fontweight="bold")
+    ax.set_yticks([0, 0.25, 0.5, 0.75, 1])
+    ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=7)
+    ax.set_xticks(x)
+
+    # X-tick labels: species name, coloured red if composition outlier
+    tick_labels = []
+    for _, sp_row in sub.iterrows():
+        sp = sp_row["species"]
+        # Remove clade prefix for brevity
+        short = sp[3:] if sp[:2] == clade else sp
+        tick_labels.append(short)
+
+    ax.set_xticklabels(tick_labels, rotation=90, fontsize=5.5)
+    for tick, (_, sp_row) in zip(ax.get_xticklabels(), sub.iterrows()):
+        if sp_row["outlier_composition"]:
+            tick.set_color("red")
+            tick.set_fontweight("bold")
+        if sp_row["outlier_univariate"]:
+            tick.set_text(tick.get_text() + " ★")
+            tick.set_color("red")
+            tick.set_fontweight("bold")
+
+    ax.grid(axis="y", alpha=0.25, lw=0.5)
+    ax.spines[["top","right"]].set_visible(False)
+
+# Hide empty subplots
+for ax_idx in range(n_clades, nrows * ncols):
+    row_i, col_i = divmod(ax_idx, ncols)
+    axes[row_i][col_i].set_visible(False)
+
+# Shared legend
+legend_patches = [mpatches.Patch(color=CLASS_COLORS[c], label=c) for c in TE_CLASSES]
+fig.legend(handles=legend_patches, loc="lower center", ncol=len(TE_CLASSES),
+           fontsize=9, frameon=False, bbox_to_anchor=(0.5, -0.02))
+
+plt.tight_layout(rect=[0, 0.04, 1, 1])
+out1 = os.path.join(OUT_DIR, "clade_stacked_bars.pdf")
+fig.savefig(out1, dpi=150, bbox_inches="tight")
+plt.close()
+print(f"[OK] Stacked bars → {out1}")
+
+# ── 4. PLOT 2: deviation-from-clade-mean heatmap ──────────────────────────────
+# For each species compute: prop_class - clade_mean_prop_class
+records_dev = []
+for clade, grp in df_all.groupby("clade"):
+    clade_mean = grp[prop_cols].mean()
+    for _, r in grp.iterrows():
+        dev = {c.replace("prop_",""): r[c] - clade_mean[c] for c in prop_cols}
+        dev["species"] = r["species"]
+        dev["clade"]   = clade
+        dev["outlier_composition"] = r["outlier_composition"]
+        dev["outlier_univariate"]  = r["outlier_univariate"]
+        dev["total_TE_pct"]        = r["total_TE_pct"]
+        records_dev.append(dev)
+
+df_dev = pd.DataFrame(records_dev)
+
+# Sort: by clade, then by total_TE_pct within clade
+df_dev = df_dev.sort_values(["clade", "total_TE_pct"])
+
+# Build matrix
+heat_mat = df_dev[TE_CLASSES].values          # shape (n_sp, n_classes)
+species_labels = df_dev["species"].values
+clade_labels   = df_dev["clade"].values
+
+# Row colours for clade annotation
+clade_palette = sns.color_palette("tab20", n_colors=len(clades))
+clade_color_map = dict(zip(clades, clade_palette))
+row_colors = pd.Series(clade_labels, name="Clade").map(clade_color_map)
+
+# Build short labels for y-axis
+short_labels = []
+for sp, cl in zip(species_labels, clade_labels):
+    short = sp[3:] if sp.startswith(cl) else sp
+    short_labels.append(short)
+
+fig_h = max(14, len(species_labels) * 0.22)
+fig, (ax_heat, ax_cbar) = plt.subplots(
+    1, 2, figsize=(10, fig_h),
+    gridspec_kw={"width_ratios": [1, 0.04]})
+
+# Draw heatmap
+vmax = max(abs(heat_mat.max()), abs(heat_mat.min()))
+vmax = max(vmax, 0.1)
+im = ax_heat.imshow(heat_mat, aspect="auto", cmap="RdBu_r",
+                    vmin=-vmax, vmax=vmax, interpolation="nearest")
+
+# Y-axis
+ax_heat.set_yticks(range(len(species_labels)))
+ax_heat.set_yticklabels(short_labels, fontsize=5)
+
+# Colour outlier y-labels red
+for i, (sp, comp_out, univ_out) in enumerate(
+        zip(species_labels, df_dev["outlier_composition"], df_dev["outlier_univariate"])):
+    if comp_out or univ_out:
+        ax_heat.get_yticklabels()[i].set_color("red")
+        ax_heat.get_yticklabels()[i].set_fontweight("bold")
+
+# Clade annotation strip on the left
+ax_heat.set_yticks(range(len(species_labels)))  # ensure ticks set
+clade_strip_x = -0.8  # in data coords; we'll use a twin axis instead
+
+# Draw coloured rectangles along y-axis for clade annotation
+# Use inset axes as colour strip
+ax_strip = ax_heat.inset_axes([-0.12, 0, 0.10, 1], transform=ax_heat.transAxes)
+ax_strip.set_xlim(0, 1)
+ax_strip.set_ylim(-0.5, len(species_labels) - 0.5)
+ax_strip.invert_yaxis()
+ax_strip.axis("off")
+
+prev_clade = None
+block_start = 0
+for i, cl in enumerate(clade_labels):
+    if cl != prev_clade:
+        if prev_clade is not None:
+            ax_strip.barh(y=(block_start + i - 1) / 2,
+                          width=1, height=i - block_start,
+                          left=0, color=clade_color_map[prev_clade], alpha=0.9)
+            ax_strip.text(0.5, (block_start + i - 1) / 2, prev_clade,
+                          ha="center", va="center", fontsize=6,
+                          color="white", fontweight="bold")
+        block_start = i
+        prev_clade = cl
+# last block
+ax_strip.barh(y=(block_start + len(clade_labels) - 1) / 2,
+              width=1, height=len(clade_labels) - block_start,
+              left=0, color=clade_color_map[prev_clade], alpha=0.9)
+ax_strip.text(0.5, (block_start + len(clade_labels) - 1) / 2, prev_clade,
+              ha="center", va="center", fontsize=6,
+              color="white", fontweight="bold")
+
+# Draw horizontal lines between clades
+clade_breaks = np.where(np.array(clade_labels[:-1]) != np.array(clade_labels[1:]))[0]
+for b in clade_breaks:
+    ax_heat.axhline(b + 0.5, color="white", lw=1.5)
+
+# Mark outlier species with ★ on the right
+for i, (comp_out, univ_out) in enumerate(
+        zip(df_dev["outlier_composition"], df_dev["outlier_univariate"])):
+    if comp_out or univ_out:
+        ax_heat.text(len(TE_CLASSES) - 0.4, i, "★",
+                     ha="left", va="center", fontsize=7, color="red")
+
+# X-axis
+ax_heat.set_xticks(range(len(TE_CLASSES)))
+ax_heat.set_xticklabels(TE_CLASSES, rotation=40, ha="right", fontsize=8)
+ax_heat.set_title("TE class composition deviation from clade mean\n"
+                  "(red = outlier species;  ★ = significant;  blue = less, red = more)",
+                  fontsize=10, pad=10)
+
+# Colorbar
+plt.colorbar(im, cax=ax_cbar, label="Δ proportion (species − clade mean)")
+
+plt.tight_layout()
+out2 = os.path.join(OUT_DIR, "clade_deviation_heatmap.pdf")
+fig.savefig(out2, dpi=150, bbox_inches="tight")
+plt.close()
+print(f"[OK] Heatmap → {out2}")
