@@ -160,23 +160,48 @@ for ax_idx, clade in enumerate(clades):
     ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=7)
     ax.set_xticks(x)
 
-    # X-tick labels: species name, coloured red if composition outlier
+    # X-tick labels: plain text (coloured below via annotations)
     tick_labels = []
     for _, sp_row in sub.iterrows():
         sp = sp_row["species"]
-        # Remove clade prefix for brevity
         short = sp[3:] if sp[:2] == clade else sp
         tick_labels.append(short)
 
     ax.set_xticklabels(tick_labels, rotation=90, fontsize=5.5)
+
+    # Colour labels and add markers AFTER drawing ticks
+    ax.figure.canvas.draw()  # needed to position tick labels
     for tick, (_, sp_row) in zip(ax.get_xticklabels(), sub.iterrows()):
-        if sp_row["outlier_composition"]:
+        is_comp = sp_row["outlier_composition"]
+        is_univ = sp_row["outlier_univariate"]
+        if is_comp or is_univ:
             tick.set_color("red")
             tick.set_fontweight("bold")
-        if sp_row["outlier_univariate"]:
-            tick.set_text(tick.get_text() + " ★")
-            tick.set_color("red")
-            tick.set_fontweight("bold")
+
+    # Add markers above bars: ● (coloured dot = driving TE class) and/or *
+    # Compute which TE class deviates most for composition outliers
+    if os.path.exists(OUTLIERS_TSV):
+        df_dev_clade = df_all[df_all["clade"] == clade].copy()
+        clade_mean = df_dev_clade[prop_cols].mean()
+        for i, (_, sp_row) in enumerate(sub.iterrows()):
+            is_comp = sp_row["outlier_composition"]
+            is_univ = sp_row["outlier_univariate"]
+            y_top = 1.02
+            offset = 0
+            if is_univ:
+                ax.text(i, y_top + offset, "*", ha="center", va="bottom",
+                        fontsize=8, color="black", fontweight="bold")
+                offset += 0.06
+            if is_comp:
+                # Find which class drives the outlier (max |deviation|)
+                devs = {c: abs(sp_row[f"prop_{c}"] - clade_mean[f"prop_{c}"])
+                        for c in TE_CLASSES}
+                driver = max(devs, key=devs.get)
+                ax.plot(i, y_top + offset, "o",
+                        color=CLASS_COLORS[driver], markersize=5,
+                        markeredgecolor="black", markeredgewidth=0.4,
+                        transform=ax.get_xaxis_transform(),
+                        clip_on=False)
 
     ax.grid(axis="y", alpha=0.25, lw=0.5)
     ax.spines[["top","right"]].set_visible(False)
