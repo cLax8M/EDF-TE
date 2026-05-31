@@ -37,6 +37,7 @@ BASE_DIR = Path(os.environ.get("BASE_DIR", "/data/carlos/EDF-TE"))
 RESULTS_DIR = Path(os.environ.get("RESULTS_DIR", BASE_DIR / "TE_analysis" / "DAM_search" / "results"))
 EXP_RESULTS = Path(os.environ.get("EXP_RESULTS", BASE_DIR / "TE_analysis" / "expansion_analysis" / "results"))
 WGD_DIR = Path(os.environ.get("WGD_DIR", "/legserv/Temp/Carlos/EDF-TE/WGD/Modern_wgd2_pipeline/results/paper_no_filter"))
+WGD_BP_DIR = WGD_DIR / "te_breakpoint_enrichment"
 TE_ANNOT_DIR = Path(os.environ.get("TE_ANNOT_DIR", BASE_DIR / "TE_analysis" / "EarlGrey"))
 S2_DIR = Path(os.environ.get("S2_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section2_te_landscape"))
 S3_DIR = Path(os.environ.get("S3_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section3_te_epigenetics"))
@@ -155,9 +156,14 @@ def build_fig2a(writer):
     path = BASE_DIR / "TE_analysis" / "EarlGrey" / "te_content_summary.tsv"
     df = safe_read(path)
     if df is None:
-        # Try to aggregate from expansion results
-        alt = EXP_RESULTS / "expansion_stats.tsv"
+        # Use TE_expansion_master_table which has per-species per-pfam data
+        alt = EXP_RESULTS / "TE_expansion_master_table.tsv"
         df = safe_read(alt)
+        if df is not None:
+            # Summarise: select relevant columns
+            cols = [c for c in ["pfam", "target_clade", "median_copies_target",
+                                 "median_copies_rest", "expansion_type"] if c in df.columns]
+            df = df[cols] if cols else df
     units = {
         "species": "species code",
         "clade": "18-clade",
@@ -301,11 +307,27 @@ def build_fig4b(writer):
     """Fig4B_cooption_heatmap: fraction co-opted per clade × domain."""
     path = EXP_RESULTS / "clade_expansion_table.tsv"
     df = safe_read(path)
+    if df is not None:
+        # Select the columns relevant for the figure
+        keep = [c for c in ["pfam", "domain_desc", "clade", "clade_name",
+                             "expansion_class", "n_clade_species", "n_positive",
+                             "pct_positive", "median_copies_positive",
+                             "fold_vs_rest", "in_master"] if c in df.columns]
+        df = df[keep]
+        if "n_clade_species" in df.columns and "n_positive" in df.columns:
+            df["frac_species_with_expansion"] = df["n_positive"] / df["n_clade_species"]
     units = {
+        "pfam": "Pfam accession",
+        "domain_desc": "domain description",
         "clade": "18-clade code",
-        "te_domain_ipr": "InterPro accession",
-        "te_domain_name": "domain name",
-        "frac_species_with_cooption": "fraction [0,1]",
+        "clade_name": "clade full name",
+        "expansion_class": "cladal | species-specific",
+        "n_clade_species": "total species in clade",
+        "n_positive": "species with expansion",
+        "pct_positive": "% [0,100]",
+        "median_copies_positive": "median copy number in expanded species",
+        "fold_vs_rest": "fold change vs non-expanded species",
+        "frac_species_with_expansion": "fraction [0,1]",
     }
     write_sheet(writer, df, "Fig4B_cooption_heatmap", units)
 
@@ -340,10 +362,20 @@ def build_fig4e(writer):
     """Fig4E_fusions: fusion gene counts per clade × fusion class."""
     path = EXP_RESULTS / "fusion_summary.tsv"
     df = safe_read(path)
+    if df is not None:
+        # fusion_summary has: pfam, domain_name, n_proteins_with_domain,
+        # n_fusions_with_TE, n_species_with_fusion, fusion_rate
+        # Also try protein_fusion_screen for more detail
+        screen = safe_read(EXP_RESULTS / "protein_fusion_screen.tsv")
+        if screen is not None:
+            df = screen
     units = {
-        "clade": "18-clade",
-        "fusion_class": "FLYWCH-MULE | CotH-DDE | NACHT-RT | PARP-Chromo",
-        "frac_species_with_fusion": "fraction [0,1]",
+        "pfam": "Pfam accession of host domain",
+        "domain_name": "domain name",
+        "n_proteins_with_domain": "count",
+        "n_fusions_with_TE": "proteins with TE domain co-occurrence",
+        "n_species_with_fusion": "count",
+        "fusion_rate": "n_fusions / n_proteins_with_domain",
     }
     write_sheet(writer, df, "Fig4E_fusions", units)
 
@@ -357,31 +389,31 @@ def build_fig4f(writer):
     if dam is None or amt is None:
         write_sheet(writer, None, "Fig4F_dam_amt1")
         return
-    # Merge on species
-    df = dam.merge(amt, on="species", how="outer")
-    cols_keep = ["species", "clade", "AMT1_status", "te_class",
-                 "DAM_evalue", "domain_architecture"]
-    # Rename for clarity
-    df = df.rename(columns={"AMT1_status": "amt1_present"})
-    # Keep only available columns
+    # amt1 has: species, AMT1_status, AMT1_proteinIds
+    amt = amt.rename(columns={"AMT1_status": "amt1_status"})
+    # dam has: species, te_class, source, DAM_evalue, RT_evalue, AMT1_status,
+    #          rep_orf, orf_length_aa, domain_architecture
+    dam = dam.rename(columns={"AMT1_status": "dam_amt1_col"})
+    # Outer merge on species
+    df = amt.merge(dam, on="species", how="outer")
+    df["dam_te_present"] = df["te_class"].notna().astype(int)
+    cols_keep = ["species", "amt1_status", "dam_te_present", "te_class",
+                 "DAM_evalue", "RT_evalue", "orf_length_aa", "domain_architecture",
+                 "source", "rep_orf"]
     df = df[[c for c in cols_keep if c in df.columns]]
-    # Create numeric dam_te_present column if not present
-    if "dam_te_present" not in df.columns:
-        # Any row in the DAM table implies dam_te_present = 1
-        all_species_path = RESULTS_DIR.parent / "species_list.txt"
-        if all_species_path.exists():
-            all_sp = pd.read_csv(all_species_path, header=None, names=["species"])
-            df_full = all_sp.merge(df, on="species", how="left")
-            df_full["dam_te_present"] = df_full["te_class"].notna().astype(int)
-            df = df_full
+    df = df.sort_values(["dam_te_present", "amt1_status"],
+                        ascending=[False, True]).reset_index(drop=True)
     units = {
         "species": "species code",
-        "clade": "18-clade",
-        "dam_te_present": "0/1",
-        "amt1_present": "present | absent",
-        "te_class": "TE class of DAM-embedding element (DIRS or Gypsy)",
+        "amt1_status": "present | absent (IPR014885)",
+        "dam_te_present": "1 = DAM gene embedded in TE; 0 = not found",
+        "te_class": "TE class of DAM-embedding element",
         "DAM_evalue": "HMMER E-value vs PF05869",
-        "domain_architecture": "InterProScan domain string",
+        "RT_evalue": "HMMER E-value for reverse transcriptase domain",
+        "orf_length_aa": "length of TE-embedded ORF (aa)",
+        "domain_architecture": "InterProScan domain chain",
+        "source": "Phase1 | Phase2 discovery phase",
+        "rep_orf": "RepBase consensus ORF match",
     }
     write_sheet(writer, df, "Fig4F_dam_amt1", units)
 
@@ -420,7 +452,7 @@ def build_fig5a(writer):
 
 def build_fig5b(writer):
     """Fig5B_breakpoints: TE density at breakpoints vs random per species."""
-    path = WGD_DIR / "enrichment_summary.tsv"
+    path = WGD_BP_DIR / "enrichment_summary.tsv"
     df = safe_read(path)
     units = {
         "species": "species code",
@@ -439,7 +471,7 @@ def build_fig5b(writer):
 
 def build_fig5c(writer):
     """Fig5C_te_class_bp: TE class at breakpoints vs background per species."""
-    path = WGD_DIR / "per_superfamily_summary.tsv"
+    path = WGD_BP_DIR / "per_superfamily_summary.tsv"
     df = safe_read(path)
     if df is None:
         write_sheet(writer, None, "Fig5C_te_class_bp")
