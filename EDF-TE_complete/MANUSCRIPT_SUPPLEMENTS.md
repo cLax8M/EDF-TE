@@ -709,106 +709,95 @@ copies of that family) was computed per species
 
 #### 12.1 Domain-based co-option screen
 
-All OrthoFinder orthogroups were screened for the simultaneous presence of a set of
-13 TE-derived InterPro domain families in at least one member protein
-(`section4_te_cooption/01_cooption_orthogroup_pipeline.py`).  The query domain
-list comprised: IPR001584 (RVT_1, reverse transcriptase core), IPR002104 (DDE
-transposase domain), IPR021967 (IS200/IS605 transposase), IPR001878 (CCHC-type
-zinc finger), IPR002510 (integrase catalytic domain), IPR000477 (reverse transcriptase
-RNA-dependent), IPR004875 (IS3/IS481 transposase), IPR006538 (IS5 transposase),
-IPR002951 (IS4 transposase), IPR011010 (DNA breaking-rejoining enzyme),
-IPR013762 (integrase-like N-terminal domain), IPR000380 (Mutator-like transposase),
-and IPR003086 (SWIM zinc finger).
+Predicted proteomes from all 238 analysed species were annotated with InterProScan
+(Pfam database) using a 16-step pipeline (`Cooption/scripts/00_normalize_interpro.py`
+through `15_clade_cooption_analysis.py`).  Each gene was classified on the basis of
+its Pfam domain composition into one of three categories using a curated list of
+TE-machinery Pfam accessions (`Cooption/scripts/05_classify_genes.py`):
 
-Orthogroups with ≥ 1 member carrying any of these domains were further validated by
-DIAMOND BLASTX v2.1.8 of the complete orthogroup protein sequences against the
-cross-species TE consensus library (`--more-sensitive -e 1e-5 --id 30 -c 0.50`).
-A protein was classified as **co-opted** — i.e. of cellular rather than TE-encoded
-origin — if all three of the following criteria were met:
-(i) protein length < 800 aa (full-length TE ORFs in fungi typically exceed 900 aa);
-(ii) the GFF3 record of the gene contained ≥ 1 exon ≥ 100 aa in length;
-(iii) no full-length hit (query coverage ≥ 80 %) to any consensus in the TE library.
-Criterion (iii) distinguishes actively transcribed TE copies (full-length hit) from
-truncated or domesticated genes (no full-length hit).
+- **te_core**: gene carries ≥ 1 Pfam domain corresponding to a TE structural or
+  catalytic component.  The te_core domain set includes (non-exhaustively) PF00078
+  (RVT_1), PF07727 (RVT_2), PF00075 (RNase_H), PF00665 (rve integrase), PF02022
+  (Integrase_H2C), PF03732 (Retrotrans_gag), PF03184 (DDE_1 Tc1/Mariner),
+  PF01609 (DDE/IS240), PF10551 (MULE), PF05699 (hAT_N), PF14214 (Helitron_like_N),
+  PF03372 (Exo_endo_phos LINE endonuclease), and PF00098 (zf-CCHC).
+- **te_assoc**: gene carries the chromodomain (PF00385 Chromo or PF01772
+  Chromo_shadow) — a chromatin-reader domain found in Gypsy-clade Ty3 elements —
+  but no te_core domain.
+- **non_te**: all other genes.
+
+A gene was designated **co-opted** if it satisfied both of the following:
+(i) at least one te_core or te_assoc domain is present; and
+(ii) the gene is not classified as a complete TE ORF — i.e. it carries at least
+one Pfam domain not belonging to the TE domain set
+(`Cooption/scripts/06_filter_true_cooption.py`).
+
+A total of **51,799 co-opted genes** were identified across 238 species (17 clades).
+[*NOTE — confirm total and per-clade breakdown numbers with the RESULTS_SUMMARY.txt*]
 
 #### 12.2 ChimeraTE chimeric transcript detection
 
-Chimeric gene–TE transcripts were detected with ChimeraTE v1.0 in genome mode
-(`section4_te_cooption/02_chimte_analysis.py`).  Each species was processed with:
+Chimeric gene–TE transcripts were detected with ChimeraTE (Mode 1, RNA-based)
+(`Cooption/scripts/chimte_bedtools_perrep.py`, `chimte_merge.py`,
+`prep_chimeraTE_data.py`).
 
-```
-ChimeraTE pipeline \
-  --mode genome \
-  --genome <reference.fa> \
-  --te_annotation <EarlGrey_filtered.bed> \
-  --gene_annotation <annotation.gff3> \
-  --bam <STAR_sorted.bam> \
-  --min_chimeric_reads 3 \
-  --te_distance 10000 \
-  --threads 8
-```
-
-ChimeraTE identifies read pairs in which one mate maps to an annotated TE copy
-region and the other mate maps to an annotated gene exon.  The following thresholds
-were enforced:
-- Minimum 3 read pairs supporting the same TE copy × gene combination.
-- The TE-mapping mate must overlap the EarlGrey BED annotation by ≥ 1 bp.
-- The gene-mapping mate must overlap an annotated exon by ≥ 1 bp.
-- Maximum distance from the TE copy boundary to the gene transcription start site
-  (TSS): 10,000 bp.  This excludes insertions in intergenic regions far from any
-  gene, focusing on potentially functional TE–gene fusions.
-
-**Shared chimeras** (the same TE family × gene orthogroup junction detected in ≥ 2
-species) were identified by inner join on the (te_family_label, orthogroup_id)
-column pair across per-species ChimeraTE output tables.
+[*NOTE — ChimeraTE analysis was running for MU species at time of writing; EDF
+species pending.  Please fill in: (1) exact ChimeraTE version and command-line
+parameters used; (2) RNA-seq datasets and STAR alignment parameters; (3) final
+number of species analysed and chimeric junctions detected.*]
 
 #### 12.3 TF binding site enrichment in TE sequences
 
-Transcription factor binding site (TFBS) motifs from the JASPAR 2024 Core Fungi
-database (386 non-redundant motifs; downloaded February 2024) were scanned against
-all TE consensus sequences using FIMO v5.5.5 (MEME suite):
+DAP-seq peak data for **58 transcription factors** from *Rhizopus microsporus*
+ATCC11559 were analysed in two complementary ways
+(`TF_TE_analysis/scripts/01_peak_TE_overlap.py` and
+`TF_TE_analysis/scripts/03_fimo_motif_enrichment.py`).
 
-```
-fimo --oc <out_dir> --thresh 1e-4 --qv-thresh 0.05 \
-  --max-stored-scores 500000 \
-  <jaspar_fungi_2024.meme> <te_consensi.fa>
-```
+**Peak–TE overlap (script 01).**  DAP-seq peak BED files (filtered at
+q-value ≥ 10⁻² ) were intersected with the EarlGrey TE annotation of *R. microsporus*
+ATCC11559 using bedtools intersect.  For each TF, the fraction of peaks overlapping
+any TE copy was computed; enrichment relative to the genomic TE coverage was tested
+with a two-sided Fisher's exact test.  Significance was assessed after
+Benjamini–Hochberg correction (FDR 5 %).
 
-`--thresh 1e-4` sets the nominal p-value threshold for hit reporting; `--qv-thresh 0.05`
-applies an additional Benjamini–Hochberg q-value filter within each sequence.
-`--max-stored-scores 500000` increases the default score storage limit to handle
-large databases.
+**FIMO motif enrichment in TE sequences (script 03).**  FIMO v5.5.5 was run for
+each of the 58 TF motif files (MEME format; `data/TFsDAP/motifs/`) against the TE
+sequences of each TE class, and separately against 3× size-matched genomic
+shuffled sequences generated with `bedtools shuffle`.  The p-value threshold for
+FIMO hit reporting was 1 × 10⁻⁴.  Enrichment in TE sequences relative to the
+shuffled background was tested with a two-sided Fisher's exact test on the
+2 × 2 contingency table (TE sequences with ≥ 1 FIMO hit vs. background sequences
+with ≥ 1 FIMO hit); p-values were corrected across all TF × TE class combinations
+using the Benjamini–Hochberg procedure (FDR 5 %).
 
-For each TF × TE class pair, enrichment was tested with a two-sided Fisher's exact
-test on the 2×2 contingency table:
+A focused cross-species analysis of the HMGb motif (HMGb_1228) enrichment in
+LINE/I-Jockey elements was subsequently performed for all available species with
+annotated Jockey elements
+(`TF_TE_analysis/scripts/run_hmgb3_jockey_cross_species.sh`).
 
-|  | TE class X | Other TE classes |
-|--|-----------|-----------------|
-| ≥ 1 FIMO hit | a | b |
-| No FIMO hit | c | d |
+[*NOTE — please confirm: (1) TF family names and DAP-seq experiment details;
+(2) the specific HMGb result statistics (p-value, OR, n species);
+(3) whether any cross-species analyses beyond R. microsporus were finalised.*]
 
-P-values were corrected for multiple testing across all TF × TE class combinations
-(n = 386 × number_of_TE_classes) using the Benjamini–Hochberg procedure (FDR 5 %).
-The result for HMGb3 × LINE/I-Jockey (p = 0.00275, OR = 4.8, n = 4 species with
-both data types) is presented as suggestive owing to the small sample size.
+#### 12.4 TE–host domain fusion proteins
 
-#### 12.4 Multi-domain TE fusion proteins
+Proteins carrying at least one TE-derived Pfam domain AND at least one host-function
+domain in the same gene were identified across all 238 species
+(`Cooption/scripts/02_classify_proteins.py`, architecture class `TE_host_fusion`).
+This includes proteins in which a TE catalytic component (te_core) has been
+co-recruited with a cellular function domain (non_te), and proteins where DUF
+(Domain of Unknown Function) domains co-occur with TE domains
+(`Cooption/scripts/13_duf_te_fusions.py`).
 
-Proteins harbouring at least one TE-associated domain AND at least one host-function
-domain were identified from InterProScan output
-(`section4_te_cooption/04_domain_fusion_analysis.py`).  Four canonical fusion classes
-were defined by the co-occurrence of the following IPR pair in the same protein:
+For DUF × TE pairs, enrichment relative to the null expectation (marginal DUF
+frequency × marginal TE frequency) was tested with Fisher's exact test (BH-FDR 5 %).
+The most prevalent co-occurring pairs recovered include DUF4217 (PF13959) with
+Helitron and Helicase TE domains (present in 156 species), and DUF1605 (PF07717)
+with Helitron elements (44 species).
 
-| Fusion class | TE domain (IPR) | Host domain (IPR) |
-|---|---|---|
-| FLYWCH–MULE | IPR007527 (FLYWCH Zn-finger) | IPR002992 (Mutator transposase) |
-| CotH–DDE | IPR033853 (CotH-like kinase) | IPR002104 (DDE transposase) |
-| NACHT–RT | IPR007111 (NACHT ATPase) | IPR000477 (Reverse transcriptase) |
-| PARP–Chromo | IPR012317 (PARP catalytic) | IPR000953 (Chromodomain) |
-
-A protein is assigned to a fusion class if both partner IPR accessions appear
-within the same protein record in the InterProScan output (same protein identifier,
-any database source).
+[*NOTE — please provide: (1) the four canonical fusion classes you highlighted in
+the paper (domain pair names + Pfam IDs); (2) any additional enrichment statistics
+you want quoted.*]
 
 #### 12.5 DAM methyltransferases embedded within TEs
 
