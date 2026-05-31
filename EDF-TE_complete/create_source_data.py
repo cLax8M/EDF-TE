@@ -38,7 +38,8 @@ RESULTS_DIR = Path(os.environ.get("RESULTS_DIR", BASE_DIR / "TE_analysis" / "DAM
 EXP_RESULTS = Path(os.environ.get("EXP_RESULTS", BASE_DIR / "TE_analysis" / "expansion_analysis" / "results"))
 WGD_DIR = Path(os.environ.get("WGD_DIR", "/legserv/Temp/Carlos/EDF-TE/WGD/Modern_wgd2_pipeline/results/paper_no_filter"))
 WGD_BP_DIR = WGD_DIR / "te_breakpoint_enrichment"
-TE_ANNOT_DIR = Path(os.environ.get("TE_ANNOT_DIR", BASE_DIR / "TE_analysis" / "EarlGrey"))
+TE_ANNOT_DIR = Path(os.environ.get("TE_ANNOT_DIR", BASE_DIR / "TE_analysis" / "annotated"))
+TF_TE_RESULTS = Path(os.environ.get("TF_TE_RESULTS", "/legserv/Temp/Carlos/EDF-TE/results/TF_TE_analysis"))
 S2_DIR = Path(os.environ.get("S2_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section2_te_landscape"))
 S3_DIR = Path(os.environ.get("S3_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section3_te_epigenetics"))
 S4_DIR = Path(os.environ.get("S4_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section4_te_cooption"))
@@ -152,31 +153,46 @@ def build_fig1d(writer):
 
 
 def build_fig2a(writer):
-    """Fig2A_te_content: per-species domain copy-number matrix (expansion_copynumber.tsv)."""
-    # te_content_summary.tsv does not exist yet; use expansion_copynumber as best proxy
-    # (species x domain copy-number wide matrix — basis of ordination)
-    path = BASE_DIR / "TE_analysis" / "EarlGrey" / "te_content_summary.tsv"
-    df = safe_read(path)
-    if df is None:
-        alt = EXP_RESULTS / "expansion_copynumber.tsv"
-        df = safe_read(alt)
-        if df is not None:
-            # expansion_copynumber is wide: species, clade, PF00001, PF00003, ...
-            # Keep species + clade + all PF columns
-            pass  # use as-is
-    if df is None:
-        # Final fallback
-        alt2 = EXP_RESULTS / "TE_expansion_master_table.tsv"
-        df = safe_read(alt2)
-        if df is not None:
-            cols = [c for c in ["pfam", "target_clade", "median_copies_target",
-                                 "median_copies_rest", "expansion_type"] if c in df.columns]
-            df = df[cols] if cols else df
+    """Fig2A_te_content: per-species TE bp per subclass (aggregated EarlGrey RepeatLandscape)."""
+    # Primary: aggregate EarlGrey per-species summary_table.tsv files
+    # Path pattern: TE_ANNOT_DIR/{species}_EarlGrey/{species}_RepeatLandscape/{species}_summary_table.tsv
+    rows = []
+    if TE_ANNOT_DIR.is_dir():
+        for sp_dir in sorted(TE_ANNOT_DIR.iterdir()):
+            if not sp_dir.is_dir():
+                continue
+            sp = sp_dir.name  # e.g. MU_Pilumb1_EarlGrey
+            sp_code = sp.replace("_EarlGrey", "")
+            # Try RepeatLandscape summary_table.tsv first
+            rl_dir = sp_dir / f"{sp_code}_RepeatLandscape"
+            stab = rl_dir / f"{sp_code}_summary_table.tsv"
+            if not stab.exists():
+                # fallback: divergence_summary_table in summaryFiles
+                sf_dir = sp_dir / f"{sp_code}_summaryFiles"
+                stab = sf_dir / f"{sp_code}_divergence_summary_table.tsv"
+            if not stab.exists():
+                continue
+            sdf = safe_read(stab)
+            if sdf is None:
+                continue
+            # Aggregate total_bp per subclass
+            if "subclass" in sdf.columns and "total_bp" in sdf.columns:
+                agg = sdf.groupby("subclass")["total_bp"].sum().reset_index()
+                agg["species"] = sp_code
+                rows.append(agg)
+    if rows:
+        long_df = pd.concat(rows, ignore_index=True)
+        # Pivot to wide: species × subclass
+        wide = long_df.pivot_table(index="species", columns="subclass",
+                                    values="total_bp", aggfunc="sum", fill_value=0)
+        wide = wide.reset_index()
+        wide.columns.name = None
+        df = wide
+    else:
+        df = None
     units = {
         "species": "species code",
-        "clade": "18-clade",
-        "[PFxxxxx]": "copy number per species per Pfam domain (wide matrix)",
-        "total_domains": "total domain copies summed across all Pfam families",
+        "[TE subclass]": "total bp masked by EarlGrey RepeatMasker (per TE subclass)",
     }
     write_sheet(writer, df, "Fig2A_te_content", units)
 
@@ -352,14 +368,17 @@ def build_fig4c(writer):
 
 
 def build_fig4d(writer):
-    """Fig4D_tf_te: TF × TE class enrichment matrix."""
-    path = BASE_DIR / "TF_TE_analysis" / "tf_te_enrichment_matrix.tsv"
+    """Fig4D_tf_te: TF × TE class enrichment (DAP-seq bigwig signal, Rhizopus microsporus)."""
+    # Real data: bw_TE_signal_class_mean.tsv — te_class × 58 TF columns (mean bigwig log2 enrichment)
+    path = TF_TE_RESULTS / "02_bigwig_signal" / "bw_TE_signal_class_mean.tsv"
     df = safe_read(path)
+    if df is None:
+        # Fallback: fimo enrichment TSV
+        path2 = TF_TE_RESULTS / "03_fimo_enrichment" / "fimo_enrichment.tsv"
+        df = safe_read(path2)
     units = {
-        "tf_motif": "JASPAR motif ID / TF name",
-        "te_class": "TE class",
-        "neg_log10_fdr": "−log10(BH-FDR p-value)",
-        "fisher_or": "Fisher exact odds ratio",
+        "te_class": "TE class / superfamily (EarlGrey annotation)",
+        "[TF_name]": "mean bigwig signal enrichment over TE copies (log2 FC vs input; 58 DAP-seq TFs, R. microsporus ATCC11559)",
     }
     write_sheet(writer, df, "Fig4D_tf_te", units)
 
