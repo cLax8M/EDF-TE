@@ -152,25 +152,31 @@ def build_fig1d(writer):
 
 
 def build_fig2a(writer):
-    """Fig2A_te_content: per-species TE bp and % per class."""
+    """Fig2A_te_content: per-species domain copy-number matrix (expansion_copynumber.tsv)."""
+    # te_content_summary.tsv does not exist yet; use expansion_copynumber as best proxy
+    # (species x domain copy-number wide matrix — basis of ordination)
     path = BASE_DIR / "TE_analysis" / "EarlGrey" / "te_content_summary.tsv"
     df = safe_read(path)
     if df is None:
-        # Use TE_expansion_master_table which has per-species per-pfam data
-        alt = EXP_RESULTS / "TE_expansion_master_table.tsv"
+        alt = EXP_RESULTS / "expansion_copynumber.tsv"
         df = safe_read(alt)
         if df is not None:
-            # Summarise: select relevant columns
+            # expansion_copynumber is wide: species, clade, PF00001, PF00003, ...
+            # Keep species + clade + all PF columns
+            pass  # use as-is
+    if df is None:
+        # Final fallback
+        alt2 = EXP_RESULTS / "TE_expansion_master_table.tsv"
+        df = safe_read(alt2)
+        if df is not None:
             cols = [c for c in ["pfam", "target_clade", "median_copies_target",
                                  "median_copies_rest", "expansion_type"] if c in df.columns]
             df = df[cols] if cols else df
     units = {
         "species": "species code",
         "clade": "18-clade",
-        "te_class": "TE class (Wicker 2007)",
-        "bp_total": "bp",
-        "pct_genome": "%",
-        "shannon_h": "bits",
+        "[PFxxxxx]": "copy number per species per Pfam domain (wide matrix)",
+        "total_domains": "total domain copies summed across all Pfam families",
     }
     write_sheet(writer, df, "Fig2A_te_content", units)
 
@@ -419,7 +425,8 @@ def build_fig4f(writer):
 
 
 def build_fig5a(writer):
-    """Fig5A_paralogs: colinear paralog count per Mucoromycota species."""
+    """Fig5A_paralogs: colinear paralog count + anchor-Ks per WGD species."""
+    # --- Part 1: synteny / classification summary ---
     path = WGD_DIR / "wgd_candidates_integrated.tsv"
     df = safe_read(path)
     if df is None:
@@ -428,24 +435,71 @@ def build_fig5a(writer):
         if syn is not None and wgd is not None:
             df = syn.merge(wgd, on="species_id", how="outer")
     if df is not None:
-        # Select Mucoromycota (MU_ prefix) and ≤200 scaffolds (scaffold_n column if present)
         if "species_id" in df.columns:
             df = df.rename(columns={"species_id": "species"})
-        if "species" in df.columns:
-            df = df[df["species"].str.startswith("MU_", na=False)].copy()
         cols = ["species", "n_anchorpoints", "n_multiplicons", "n_segments",
-                "classification", "confidence", "has_dup_signal", "has_synteny"]
+                "classification", "confidence", "dup_rate_per_eligible_tree",
+                "has_dup_signal", "has_synteny", "event_timing",
+                "z_multiplicons", "z_segments", "max_peak_z"]
         df = df[[c for c in cols if c in df.columns]]
         df = df.rename(columns={"n_anchorpoints": "n_colinear_paralog_pairs",
                                  "classification": "wgd_classification"})
+
+    # --- Part 2: aggregate per-species anchor-Ks files ---
+    ks_dir = WGD_DIR / "ks_analysis"
+    ks_frames = []
+    if ks_dir.is_dir():
+        for sp_dir in sorted(ks_dir.iterdir()):
+            if not sp_dir.is_dir():
+                continue
+            sp = sp_dir.name
+            anchor_f = sp_dir / f"{sp}.anchor_ks.tsv"
+            if not anchor_f.exists():
+                # try any tsv in dir
+                tsv_files = list(sp_dir.glob("*.tsv"))
+                anchor_f = tsv_files[0] if tsv_files else None
+            if anchor_f and anchor_f.exists():
+                kdf = safe_read(anchor_f)
+                if kdf is not None:
+                    kdf["species"] = sp
+                    # rename dS/Ks columns
+                    kdf = kdf.rename(columns={"dS": "Ks", "dN": "Ka"})
+                    ks_frames.append(kdf)
+    if ks_frames:
+        ks_all = pd.concat(ks_frames, ignore_index=True)
+        ks_all = ks_all[pd.to_numeric(ks_all.get("Ks", pd.Series(dtype=float)),
+                                      errors="coerce").between(0.001, 3.0)]
+        # Compute per-species Ks stats
+        if "Ks" in ks_all.columns and "species" in ks_all.columns:
+            ks_stats = (ks_all.groupby("species")["Ks"]
+                        .agg(n_ks_pairs="count",
+                             ks_median="median",
+                             ks_mean="mean",
+                             ks_mode_approx=lambda x: float(
+                                 x.value_counts(bins=60).idxmax().mid))
+                        .reset_index())
+            if df is not None and "species" in df.columns:
+                df = df.merge(ks_stats, on="species", how="left")
+            else:
+                df = ks_stats
+
     units = {
-        "species": "Mucoromycota species code (MU_ prefix)",
-        "n_colinear_paralog_pairs": "count of syntenic anchor pairs (colinear paralogs)",
-        "n_multiplicons": "count of syntenic multiplicons",
-        "n_segments": "count of collinear segments",
-        "wgd_classification": "strong | moderate | no_WGD (from GMM + synteny)",
-        "has_dup_signal": "bool (GMM Ks peak detected)",
-        "has_synteny": "bool (synteny evidence present)",
+        "species": "WGD-candidate species code",
+        "n_colinear_paralog_pairs": "anchor gene pairs in wgd syn multiplicons",
+        "n_multiplicons": "collinear multiplicons (paralogons)",
+        "n_segments": "collinear segments",
+        "wgd_classification": "strong | uncertain | weak | no_WGD",
+        "dup_rate_per_eligible_tree": "OrthoFinder normalised duplication rate",
+        "has_dup_signal": "bool — OrthoFinder duplication peak detected",
+        "has_synteny": "bool — wgd syn multiplicons > 0",
+        "event_timing": "ancient_deep | recent_terminal | mixed_deep_and_recent",
+        "z_multiplicons": "robust Z-score of n_multiplicons",
+        "z_segments": "robust Z-score of n_segments",
+        "max_peak_z": "max robust Z-score of duplication rate across nodes",
+        "n_ks_pairs": "anchor-Ks pairs used for age estimation",
+        "ks_median": "median anchor-Ks (paralogous divergence)",
+        "ks_mean": "mean anchor-Ks",
+        "ks_mode_approx": "approximate Ks mode (histogram peak, 60 bins)",
     }
     write_sheet(writer, df, "Fig5A_paralogs", units)
 
@@ -495,16 +549,25 @@ def build_fig5c(writer):
 
 
 def build_fig5d(writer):
-    """Fig5D_dup_rate: gene duplication rate per branch."""
-    path = WGD_DIR / "duplication_node_rates.tsv"
+    """Fig5D_dup_rate: gene duplication rate per branch (normalised by eligible trees)."""
+    # Primary: paper-like normalised rates
+    path = WGD_DIR / "duplication_rates_by_node_normalized.tsv"
     df = safe_read(path)
+    if df is None:
+        # Fallback: raw per-node rates
+        path = WGD_DIR / "duplication_node_rates.tsv"
+        df = safe_read(path)
+    if df is None:
+        path = WGD_DIR / "species_duplication_peak_signals.tsv"
+        df = safe_read(path)
     units = {
-        "node_id": "IQ-TREE node label",
-        "node_type": "internal | leaf",
-        "n_duplications": "count of duplication events on branch",
-        "dup_rate_per_desc_leaf": "duplications per descendant leaf (normalised)",
-        "descendant_leaves": "count",
-        "tree_depth_scaled": "scaled branch depth [0,1]",
+        "node_id": "OrthoFinder / IQ-TREE node label",
+        "node_type": "terminal | internal",
+        "n_desc_species": "number of descendant species",
+        "n_duplications": "count of duplication events mapped to this node",
+        "n_eligible_trees": "orthogroups eligible for duplication at this node",
+        "dup_rate_per_eligible_tree": "n_duplications / n_eligible_trees (normalised)",
+        "max_species_copies_filter": "max allowed copies per species (expansion filter)",
     }
     write_sheet(writer, df, "Fig5D_dup_rate", units)
 
