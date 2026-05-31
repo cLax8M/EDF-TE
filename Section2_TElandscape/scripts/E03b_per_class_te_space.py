@@ -26,6 +26,7 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from scipy.spatial import ConvexHull
+from scipy.spatial.distance import pdist, squareform
 import networkx as nx
 import matplotlib
 matplotlib.use("Agg")
@@ -53,13 +54,13 @@ for _c in ["AP","BL","BS","CH","CR","EN","GL","KX","MI","MO","MU","OL","ZO"]:
 GROUP_COLORS = {
     "Holozoa":    "#e63946",
     "Nucleariida":"#f4a261",
-    "EDF":        "#2a9d8f",
-    "Dikarya":    "#457b9d",
+    "EDF":        "#e9b949",
+    "Dikarya":    "#1d3557",
 }
 GROUP_ALPHA = {"Holozoa":0.85,"Nucleariida":0.85,"EDF":0.55,"Dikarya":0.55}
 
 _edf_sorted = ["AP","BL","BS","CH","CR","EN","GL","KX","MI","MO","MU","OL","ZO"]
-_edf_cmap   = _cm.YlGn(np.linspace(0.35, 0.95, len(_edf_sorted)))
+_edf_cmap   = _cm.YlOrBr(np.linspace(0.30, 0.85, len(_edf_sorted)))
 CLADE_COLORS = {cl: _edf_cmap[i] for i, cl in enumerate(_edf_sorted)}
 CLADE_COLORS.update({"HO":"#e63946","NU":"#f4a261","AS":"#4a90d9","BA":"#1d3557"})
 
@@ -137,6 +138,7 @@ print(f"[INFO] Parsed {len(sp_list)} species")
 # ── 2. build one matrix per TE class ────────────────────────────────────────
 # For each class, columns = superfamilies from that class only
 class_matrices = {}
+class_bin_matrices = {}
 for cls_label in TE_CLASSES_ORDER:
     sfs = sorted({sf for sp in sp_list
                   for (cl, sf) in records_raw[sp].keys() if cl == cls_label})
@@ -156,7 +158,9 @@ for cls_label in TE_CLASSES_ORDER:
     # Proportion within that class per species
     row_sums = mat.sum(axis=1).replace(0, np.nan)
     prop = mat.div(row_sums, axis=0).fillna(0)
+    bin_mat = (mat > 0).astype(float)
     class_matrices[cls_label] = prop
+    class_bin_matrices[cls_label] = bin_mat
     print(f"[INFO] {cls_label}: {prop.shape[1]} superfamilies retained")
 
 # ── 3. drawing function ──────────────────────────────────────────────────────
@@ -164,6 +168,27 @@ def clr_transform(prop_df, pseudo=1e-6):
     X = prop_df.values + pseudo
     logX = np.log(X)
     return logX - logX.mean(axis=1, keepdims=True)
+
+def pcoa_jaccard(bin_df):
+    """Classical PCoA from Jaccard distance matrix on presence/absence data."""
+    D = squareform(pdist(bin_df.values, metric="jaccard"))
+    n = D.shape[0]
+    D2 = D ** 2
+    H = np.eye(n) - np.ones((n, n)) / n
+    B = -0.5 * H @ D2 @ H
+    eigvals, eigvecs = np.linalg.eigh(B)
+    order = np.argsort(eigvals)[::-1]
+    eigvals = eigvals[order]
+    eigvecs = eigvecs[:, order]
+    pos = eigvals > 1e-10
+    eigvals_pos = eigvals[pos]
+    if eigvals_pos.size == 0:
+        coords = np.zeros((n, 1))
+        var = np.array([0.0])
+        return coords, var
+    coords = eigvecs[:, pos] * np.sqrt(eigvals_pos)
+    var = eigvals_pos / eigvals_pos.sum() * 100
+    return coords, var
 
 def draw_ordination_class(ax, coords, sp_names, title, xlabel, ylabel):
     for sp, xy in zip(sp_names, coords):
@@ -298,6 +323,50 @@ for cls_label, prop_df in class_matrices.items():
     plt.close()
     print(f"[OK] {cls_label} → {out_fp}")
 
+# ── 5b. one P/A figure per TE class (superfamily presence/absence) ──────────
+for cls_label, bin_df in class_bin_matrices.items():
+    # Keep species with at least one present superfamily in this class
+    keep_rows = bin_df.sum(axis=1) > 0
+    bin_sub = bin_df.loc[keep_rows]
+    sp_sub = bin_sub.index.tolist()
+    n_sp = len(sp_sub)
+    if n_sp < 5:
+        print(f"[SKIP] {cls_label} P/A: only {n_sp} species with ≥1 SF present")
+        continue
+
+    coords_pa, var_pa = pcoa_jaccard(bin_sub)
+    if coords_pa.shape[1] < 4:
+        pad = 4 - coords_pa.shape[1]
+        coords_pa = np.hstack([coords_pa, np.zeros((coords_pa.shape[0], pad))])
+        var_pa = np.concatenate([var_pa, np.zeros(pad)])
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    draw_ordination_class(
+        axes[0], coords_pa[:, :2], sp_sub,
+        f"{cls_label} P/A — PCo1 vs PCo2  (n={n_sp})",
+        f"PCo1 ({var_pa[0]:.1f}%)", f"PCo2 ({var_pa[1]:.1f}%)")
+
+    draw_ordination_class(
+        axes[1], coords_pa[:, 2:4], sp_sub,
+        f"{cls_label} P/A — PCo3 vs PCo4",
+        f"PCo3 ({var_pa[2]:.1f}%)", f"PCo4 ({var_pa[3]:.1f}%)")
+
+    group_handles, clade_handles = make_legend_handles()
+    fig.legend(handles=group_handles + clade_handles,
+               loc="lower center", ncol=10, fontsize=7,
+               frameon=False, bbox_to_anchor=(0.5, -0.05))
+    fig.suptitle(f"TE superfamily P/A space — {cls_label} elements\n"
+                 "(Jaccard PCoA; dashed grey = MST on clade centroids)",
+                 fontsize=12, y=1.01)
+    plt.tight_layout(rect=[0, 0.06, 1, 1])
+
+    safe_name = cls_label.replace(" ","_").replace("/","_")
+    out_fp = os.path.join(OUT_DIR, f"merenyi_class_{safe_name}_pa.pdf")
+    fig.savefig(out_fp, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"[OK] {cls_label} P/A → {out_fp}")
+
 # ── 6. multi-panel summary figure (all classes in one PDF) ───────────────────
 n_cls = len(class_matrices)
 fig_all, axes_all = plt.subplots(2, 4, figsize=(28, 12),
@@ -340,3 +409,42 @@ out_summary = os.path.join(OUT_DIR, "merenyi_per_class_summary.pdf")
 fig_all.savefig(out_summary, dpi=150, bbox_inches="tight")
 plt.close()
 print(f"[OK] Per-class summary → {out_summary}")
+
+# ── 7. multi-panel summary for per-class P/A (Jaccard) ──────────────────────
+fig_pa, axes_pa = plt.subplots(2, 4, figsize=(28, 12),
+                               gridspec_kw={"hspace":0.35,"wspace":0.3})
+axes_flat = axes_pa.flatten()
+
+for idx, (cls_label, bin_df) in enumerate(class_bin_matrices.items()):
+    ax = axes_flat[idx]
+    keep_rows = bin_df.sum(axis=1) > 0
+    bin_sub = bin_df.loc[keep_rows]
+    sp_sub = bin_sub.index.tolist()
+    if len(sp_sub) < 5:
+        ax.set_visible(False)
+        continue
+    coords_pa, var_pa = pcoa_jaccard(bin_sub)
+    if coords_pa.shape[1] < 2:
+        coords_pa = np.hstack([coords_pa, np.zeros((coords_pa.shape[0], 1))])
+        var_pa = np.concatenate([var_pa, np.zeros(1)])
+    draw_ordination_class(
+        ax, coords_pa[:, :2], sp_sub,
+        f"{cls_label}  (n={len(sp_sub)})",
+        f"PCo1 ({var_pa[0]:.1f}%)",
+        f"PCo2 ({var_pa[1]:.1f}%)")
+
+for idx in range(len(class_bin_matrices), len(axes_flat)):
+    axes_flat[idx].set_visible(False)
+
+group_handles, clade_handles = make_legend_handles()
+fig_pa.legend(handles=group_handles + clade_handles,
+              loc="lower center", ncol=12, fontsize=6.5,
+              frameon=False, bbox_to_anchor=(0.5, -0.02))
+fig_pa.suptitle("TE superfamily presence/absence space — by TE class\n"
+                "(Jaccard PCoA; dashed grey = MST on clade centroids)",
+                fontsize=14, y=1.01)
+
+out_summary_pa = os.path.join(OUT_DIR, "merenyi_per_class_summary_pa.pdf")
+fig_pa.savefig(out_summary_pa, dpi=150, bbox_inches="tight")
+plt.close()
+print(f"[OK] Per-class P/A summary → {out_summary_pa}")

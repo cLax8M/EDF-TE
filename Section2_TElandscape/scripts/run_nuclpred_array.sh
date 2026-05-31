@@ -20,8 +20,8 @@
 # ============================================================
 
 #SBATCH --job-name=nuclpred
-#SBATCH --partition=normal.1000h
-#SBATCH --cpus-per-task=16
+#SBATCH --partition=normal.168h
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=80G
 #SBATCH --array=1-238
 #SBATCH --output=/data/carlos/EDF-TE/logs/nuclpred/nuclpred_%A_%a.log
@@ -63,8 +63,8 @@ fi
 GENOME_FA="${GENOMES_DIR}/${SP}.fasta"
 OUT_WIG="${OUT_DIR}/${SP}_nuclpred.wig"
 
-# ── skip if already complete ──────────────────────────────────
-if [[ -f "${OUT_WIG}" ]]; then
+# ── skip if already complete (non-empty WIG) ─────────────────
+if [[ -s "${OUT_WIG}" ]]; then
     echo "[SKIP] Already complete: ${SP}"
     exit 0
 fi

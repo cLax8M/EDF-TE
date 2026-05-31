@@ -97,14 +97,15 @@ def mean_occupancy_region(scores, chrom, start, end):
 
 
 def parse_superfamily_from_bed_name(name):
-    """Extract superfamily from EarlGrey BED name field (NAME#Class/Superfamily)."""
-    m = re.search(r"#([^/]+)/(.+)$", name)
-    if m:
-        return m.group(1) + "/" + m.group(2)
-    m = re.search(r"#(.+)$", name)
-    if m:
-        return m.group(1)
-    return "Unknown"
+    """Extract class/superfamily from EarlGrey BED name field.
+    EarlGrey formats:
+      - 'LTR/Gypsy'          -> direct (current EarlGrey)
+      - 'TE_name#LTR/Gypsy'  -> hash-prefixed (older format)
+      - 'Simple_repeat'      -> no slash, return as-is
+    """
+    if "#" in name:
+        name = name.split("#", 1)[1]
+    return name if name else "Unknown"
 
 
 def main():
@@ -117,7 +118,11 @@ def main():
     out_path = sys.argv[4]
 
     print(f"[{species}] Loading WIG: {wig_path}")
-    scores = parse_wig(wig_path)
+    scores_raw = parse_wig(wig_path)
+    # Strip species prefix (e.g. 'AS_Sacce1.chrI' -> 'chrI') added by predict_nucleosomes.py
+    prefix = species + "."
+    scores = {(c[len(prefix):] if c.startswith(prefix) else c): v
+              for c, v in scores_raw.items()}
     total_positions = sum(len(v) for v in scores.values())
     all_scores_flat = [v for chrom_scores in scores.values() for v in chrom_scores.values()]
     background = statistics.mean(all_scores_flat) if all_scores_flat else 0.0
@@ -164,6 +169,10 @@ def main():
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     import csv
+    if not rows:
+        print(f"[{species}] WARNING: No TE insertions overlapped WIG positions — check chromosome name consistency.")
+        open(out_path, "w").close()
+        return
     with open(out_path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=rows[0].keys(), delimiter="\t")
         writer.writeheader()

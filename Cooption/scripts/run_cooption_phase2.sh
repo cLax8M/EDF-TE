@@ -24,6 +24,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --array=1-238
+#SBATCH --exclude=LEGcompute1
 #SBATCH --output=/data/carlos/EDF-TE/logs/cooption_phase2/phase2_%A_%a.log
 #SBATCH --error=/data/carlos/EDF-TE/logs/cooption_phase2/phase2_%A_%a.err
 

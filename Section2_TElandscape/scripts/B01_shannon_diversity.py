@@ -23,16 +23,24 @@ import math
 from collections import defaultdict
 import pandas as pd
 
+# Non-TE repeat classes to exclude from diversity calculations.
+# These appear as NAME#Simple_repeat, NAME#Low_complexity, etc. in familyLevelCount.txt.
+NON_TE_CLASSES = frozenset({
+    "Simple_repeat", "Low_complexity", "Satellite",
+    "rRNA", "tRNA", "snRNA", "scRNA", "sno", "srpRNA",
+    "ARTEFACT",
+})
+
 
 def parse_superfamily(family_name):
-    """Extract superfamily from EarlGrey family label (NAME#Class/Superfamily)."""
+    """Extract (te_class, superfamily) from EarlGrey family label (NAME#Class/Superfamily)."""
     m = re.search(r"#([^/]+)/(.+)$", family_name)
     if m:
-        return m.group(1) + "/" + m.group(2)
+        return m.group(1), m.group(1) + "/" + m.group(2)
     m = re.search(r"#(.+)$", family_name)
     if m:
-        return m.group(1)
-    return "Unknown"
+        return m.group(1), m.group(1)
+    return "Unknown", "Unknown"
 
 
 def shannon(counts):
@@ -52,7 +60,7 @@ def pielou(h, n):
 
 
 def process_species(family_count_file):
-    """Read familyLevelCount.txt and return superfamily-level coverage dict."""
+    """Read familyLevelCount.txt and return superfamily-level coverage dict (TEs only)."""
     sf_bp = defaultdict(float)
     with open(family_count_file) as fh:
         for line in fh:
@@ -67,7 +75,10 @@ def process_species(family_count_file):
                 bp = float(parts[1])
             except ValueError:
                 continue
-            sf = parse_superfamily(family)
+            te_class, sf = parse_superfamily(family)
+            # Skip non-TE repeats (structural RNAs, simple repeats, artefacts)
+            if te_class in NON_TE_CLASSES:
+                continue
             sf_bp[sf] += bp
     return sf_bp
 

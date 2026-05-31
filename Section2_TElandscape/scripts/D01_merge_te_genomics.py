@@ -28,20 +28,34 @@ import re
 import pandas as pd
 
 
-# Map EarlGrey high-level class labels → short column names
+# Map EarlGrey high-level class labels → short column names.
+# Class names come from {SP}.highLevelCount.txt — always the same across species.
 CLASS_MAP = {
-    "DNA": "pct_DNA",
-    "LTR": "pct_LTR",
-    "LINE": "pct_LINE",
-    "SINE": "pct_SINE",
+    "DNA":         "pct_DNA",
+    "LTR":         "pct_LTR",
+    "LINE":        "pct_LINE",
+    "SINE":        "pct_SINE",
     "Rolling Circle": "pct_RC",
-    "Unknown": "pct_Unknown",
-    "Satellite": "pct_Satellite",
-    "Simple Repeat": "pct_SimpleRepeat",
-    "Low Complexity": "pct_LowComplexity",
+    "Penelope":    "pct_PLE",
+    "Unclassified": "pct_Unknown",
+    "Other (Simple Repeat, Microsatellite, RNA)": "pct_Other",
 }
 
+# TE-only classes for pct_TE_total (excludes non-TE "Other" repeats)
+TE_CLASSES = frozenset({"DNA", "LTR", "LINE", "SINE", "Rolling Circle",
+                        "Penelope", "Unclassified"})
+
+# Summary rows that appear at the end of the file — must be skipped
+SKIP_ROWS = frozenset({"Total Interspersed Repeat", "Non-Repeat", "TE Classification"})
+
 NESTED_RE = re.compile(r"-nested$", re.IGNORECASE)
+
+# Some EarlGrey folder IDs are legacy names while GenomicFeatures uses
+# canonical tip IDs from the species tree.
+LEGACY_TO_CANONICAL = {
+    "AS_AspfumUD": "AS_AspfumUD1",
+    "NU_Parvatl": "NU_Parvatl_c",
+}
 
 
 def load_highlevel(path):
@@ -49,20 +63,24 @@ def load_highlevel(path):
     Parse {SP}.highLevelCount.txt.
     Columns: TE Classification, Coverage (bp), Copy Number,
              % Genome Coverage, Genome Size, TE Family Count
-    Returns dict: class_label → pct_genome_coverage
-    Nested classes (e.g. DNA-nested) are added to their parent.
+    Returns dict: class_label → pct_genome_coverage (nested merged into parent).
+    Summary rows ("Total Interspersed Repeat", "Non-Repeat") are skipped.
+    pct_TE_total is the sum of true TE classes only (DNA/LTR/LINE/SINE/RC/PLE/Unclassified).
     """
     data = {}
     genome_size = None
     with open(path) as fh:
         for line in fh:
             line = line.strip()
-            if not line or line.startswith("TE Classification"):
+            if not line:
                 continue
             parts = line.split("\t")
             if len(parts) < 4:
                 continue
             te_class = parts[0].strip()
+            # Skip header and summary rows
+            if te_class in SKIP_ROWS:
+                continue
             try:
                 pct = float(parts[3])
                 gs = int(parts[4]) if len(parts) > 4 else None
@@ -71,10 +89,11 @@ def load_highlevel(path):
             if genome_size is None and gs:
                 genome_size = gs
             # Merge nested into parent class
-            base_class = NESTED_RE.sub("", te_class)
+            base_class = NESTED_RE.sub("", te_class).strip()
             data[base_class] = data.get(base_class, 0.0) + pct
 
-    total_te = sum(data.values())
+    # pct_TE_total = sum of true TE classes only (excludes non-TE "Other" repeats)
+    total_te = sum(v for k, v in data.items() if k in TE_CLASSES)
     return data, total_te, genome_size
 
 
@@ -99,11 +118,13 @@ def main():
         sp_dir = os.path.join(annotated_dir, entry)
         if not os.path.isdir(sp_dir) or not entry.endswith("_EarlGrey"):
             continue
-        sp = entry.replace("_EarlGrey", "")
-        summary_dir = os.path.join(sp_dir, f"{sp}_summaryFiles")
-        hlc = os.path.join(summary_dir, f"{sp}.highLevelCount.txt")
+        sp_raw = entry.replace("_EarlGrey", "")
+        summary_dir = os.path.join(sp_dir, f"{sp_raw}_summaryFiles")
+        hlc = os.path.join(summary_dir, f"{sp_raw}.highLevelCount.txt")
         if not os.path.isfile(hlc):
             continue
+
+        sp = LEGACY_TO_CANONICAL.get(sp_raw, sp_raw)
 
         class_data, total_te, genome_size = load_highlevel(hlc)
 

@@ -1,0 +1,854 @@
+#!/usr/bin/env python3
+"""
+05_gremlin_centromere.py
+─────────────────────────────────────────────────────────────────────────────
+LINE/I (gremlin) cluster analysis as putative centromere markers in
+Mucoromycota, with H3K9me3 validation in Rhizopus microsporus.
+
+Analyses
+  1.  LINE/I cluster detection (63 MU + 5 BL species; bedtools merge -d 50 kb)
+  2.  H3K9me3 validation in Rhizopus (pre-called MACS2 broad peaks)
+  3.  Strand-orientation bias per cluster (binomial test)
+  4.  Copy-number + Kimura80-divergence dynamics across 63 MU species
+  5.  LTR cluster detection in 5 Blastocladiomycota species
+  6.  TF-gremlin enrichment (re-uses 03_fimo_enrichment output)
+  7.  LINE/I age distribution vs clade divergence times (Haase Fig.2h style)
+      Calibrations from Szánthó et al. 2025, Nat. Ecol. Evol. 9:1989
+        LCA Mucoromycota+Dikarya : ~1,107 Ma
+        Crown Mucoromycota       :  946 Ma  (95% HPD 678–1,213 Ma)
+        Glomeromycotina          :  494 Ma  (95% HPD 408–580 Ma)
+        Endogonales              :  208 Ma  (95% HPD  76–340 Ma)
+
+Output
+  <OUTDIR>/gremlin_clusters/          — per-species BED + summary TSV
+  <OUTDIR>/h3k9me3_validation/        — Rhizopus intersect + stats
+  <OUTDIR>/bl_ltr_clusters/           — BL species LTR clusters
+  <OUTDIR>/gremlin_centromere_analysis.pdf  — 5-panel figure
+
+Usage
+  python 05_gremlin_centromere.py [--skip-clusters] [--skip-age]
+"""
+
+import argparse
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+from scipy.stats import binomtest, mannwhitneyu, fisher_exact
+
+# ── CONFIG ────────────────────────────────────────────────────────────────────
+ANNOT_ROOT = Path("/data/carlos/EDF-TE/TE_analysis/annotated")
+OUTDIR     = Path("/legserv/Temp/Carlos/EDF-TE/results/TF_TE_analysis/05_gremlin_centromere")
+FIMO_TSV   = Path("/legserv/Temp/Carlos/EDF-TE/results/TF_TE_analysis/03_fimo_enrichment/fimo_enrichment.tsv")
+
+H3K9_BED   = Path("/legserv/Temp/Carlos/EDF-TE/data/Genome_Assemblies_Conditions/"
+                  "Epigenetics/RmH3K9me3/H3K9_WT_MACS2_broad_peaks.bed")
+
+# tBLASTn-identified Grem-LINE1 families.
+# Primary  : de-novo-only summary (rnd-* families, 05c output filtered)
+# Genome   : genome-level tBLASTn + GFF intersect for species missing from primary (05d)
+# Fallback : blastn nucleotide hits (05b, 7 species)
+GREMLIN_FAMILIES_TSV     = Path("/legserv/Temp/Carlos/EDF-TE/data/gremlin/tblastn_results/"
+                                "gremlin_families_tblastn_denovo.tsv")
+GREMLIN_FAMILIES_GENOME  = Path("/legserv/Temp/Carlos/EDF-TE/data/gremlin/genome_tblastn_results/"
+                                "gremlin_families_genome.tsv")
+GREMLIN_FAMILIES_BLASTN  = Path("/legserv/Temp/Carlos/EDF-TE/data/gremlin/blast_results/"
+                                "gremlin_families_per_species.tsv")
+
+MERGE_DIST      = 50_000   # 50 kb
+MIN_ELEMENTS    = 3        # minimum Grem-LINE1 copies to call a cluster
+MIN_SPAN        = 500      # minimum cluster span (bp)
+H3K9_SCORE_MIN  = 5_000   # score threshold for "strong" H3K9me3 peak
+H3K9_START_MAX  = 2_000   # pericentromeric = near scaffold start
+DENSITY_WINDOW  = 50_000   # 50 kb bin width for LTR density analysis (BL species)
+MIN_BIN_COUNT   = 5        # min LTR elements per 50 kb bin to call a cluster
+
+# Szánthó et al. 2025 node ages (midpoint Ma; 95% HPD low–high)
+CLADE_AGES = {
+    "LCA Mucoromycota\n+ Dikarya": (1107, 1080, 1140),   # approximate HPD from paper
+    "Crown\nMucoromycota":          ( 946,  678, 1213),
+    "Glomeromycotina":              ( 494,  408,  580),
+    "Endogonales":                  ( 208,   76,  340),
+}
+
+# Two mutation rate estimates (substitutions / site / year)
+MU_RATES = {
+    "3×10⁻⁹ yr⁻¹ (slow)": 3e-9,
+    "1×10⁻⁸ yr⁻¹ (fast)": 1e-8,
+}
+
+MU_SPECIES = [
+    "MU_Abscae1","MU_Absrep1","MU_Amyrou1","MU_Apoossi","MU_Bacci1",
+    "MU_Baclam1","MU_Benpoi1","MU_Bifad1","MU_Blatri","MU_Calth1",
+    "MU_Chabre1","MU_Chlapade","MU_Chocucu1","MU_Cirumb1","MU_Cokrec1",
+    "MU_Cunech1","MU_Dicele1","MU_Dicrob1","MU_Ellano2","MU_Endsp1",
+    "MU_Fenlin","MU_Gilper1","MU_Gonbut1","MU_Halrad1","MU_Helpul1",
+    "MU_Hesve2","MU_Jimfl","MU_Jimlac1","MU_Kircor1","MU_Lenpar1",
+    "MU_Lenzyc1","MU_Liccor1","MU_Licra1","MU_Mucam1","MU_Mucci3",
+    "MU_Muccirc1","MU_Mucend1","MU_Muclan1","MU_Mucmuc1","MU_Mucpir1",
+    "MU_Mucrac1","MU_Mycafr1","MU_Mycind1","MU_Parpar1","MU_Phaart1",
+    "MU_Phybl4","MU_Pilano1","MU_Pilumb1","MU_PnitS607","MU_Radspe1",
+    "MU_Rhimi59","MU_Rhior3","MU_Rhipu1","MU_Rhisto1","MU_Sakvas1",
+    "MU_Spifus1","MU_Spoumb1","MU_Synrac1","MU_Syzme1","MU_Thaele1",
+    "MU_Umban1","MU_Umbra1","MU_Zycmex1",
+]
+
+BL_SPECIES = ["BL_Allma1","BL_Allomarbu","BL_Blabri1","BL_Catan2","BL_Parsed1"]
+
+SKIP_TE = {"Simple_repeat","Low_complexity","Satellite","rRNA","snRNA","Unknown","Unspecified","Other"}
+
+# ── HELPERS ───────────────────────────────────────────────────────────────────
+
+def bed_path(species: str) -> Path:
+    return ANNOT_ROOT / f"{species}_EarlGrey" / f"{species}_summaryFiles" / f"{species}.filteredRepeats.bed"
+
+def gff_path(species: str) -> Path:
+    return ANNOT_ROOT / f"{species}_EarlGrey" / f"{species}_summaryFiles" / f"{species}.filteredRepeats.gff"
+
+def load_bed(path: Path) -> pd.DataFrame:
+    """Load a filteredRepeats.bed; return DataFrame with chrom/start/end/te_class/score/strand."""
+    df = pd.read_csv(path, sep="\t", header=None, usecols=[0,1,2,3,5],
+                     names=["chrom","start","end","te_class","strand"])
+    return df
+
+def load_gff_as_bed(path: Path) -> pd.DataFrame:
+    """
+    Load filteredRepeats.gff and return a BED-like DataFrame with:
+      chrom, start, end, te_class, strand, te_name, kimura80
+    te_name is parsed from the Name= attribute (family-level, e.g. RND-1_FAMILY-124).
+    """
+    pat_name    = re.compile(r"Name=([^;]+)")
+    pat_kimura  = re.compile(r"kimura80=([0-9.]+)")
+    rows = []
+    with open(path) as fh:
+        for line in fh:
+            if line.startswith("#"):
+                continue
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 9:
+                continue
+            chrom    = parts[0]
+            te_class = parts[2]
+            start    = int(parts[3])
+            end      = int(parts[4])
+            strand   = parts[6]
+            attr     = parts[8]
+            m_name   = pat_name.search(attr)
+            te_name  = m_name.group(1) if m_name else te_class
+            # Normalise: strip trailing _N (instance counter) from RND names
+            # e.g. RND-1_FAMILY-124 (not RND-1_FAMILY-124_26471 which is in ID=)
+            m_k80    = pat_kimura.search(attr)
+            k80      = float(m_k80.group(1)) if m_k80 else float("nan")
+            rows.append((chrom, start - 1, end, te_class, strand, te_name, k80))
+    return pd.DataFrame(rows, columns=["chrom","start","end","te_class","strand","te_name","kimura80"])
+
+def load_gremlin_families() -> dict:
+    """
+    Load tBLASTn-identified Grem-LINE1 family names per species.
+    Sources (merged):
+      1. GREMLIN_FAMILIES_TSV  — de-novo rnd-* families from TE-library tBLASTn (05c)
+      2. GREMLIN_FAMILIES_GENOME — genome-level tBLASTn + GFF intersect (05d)
+      3. GREMLIN_FAMILIES_BLASTN — blastn nucleotide fallback (05b)
+    Returns {species: set(family_names)}.
+    """
+    families: dict = {}
+
+    def _load_tsv(path: Path, label: str) -> None:
+        if not path.exists():
+            return
+        print(f"  Loading gremlin families from {label}: {path.name}")
+        df = pd.read_csv(path, sep="\t")
+        if df.empty:
+            return
+        for sp, grp in df.groupby("species"):
+            families.setdefault(sp, set()).update(grp["family_name"].tolist())
+
+    _load_tsv(GREMLIN_FAMILIES_TSV,    "tBLASTn de-novo (05c)")
+    _load_tsv(GREMLIN_FAMILIES_GENOME, "genome tBLASTn (05d)")
+    _load_tsv(GREMLIN_FAMILIES_BLASTN, "blastn fallback (05b)")
+
+    if not families:
+        print("  INFO: no gremlin families found — will use LINE/I class as fallback")
+    else:
+        print(f"  Loaded gremlin families for {len(families)} species")
+    return families
+
+def filter_gremlins(gff_df: pd.DataFrame, species: str,
+                    gremlin_families: dict) -> pd.DataFrame:
+    """
+    Filter GFF DataFrame to Grem-LINE1 elements.
+    Uses BLAST-identified family names when available;
+    falls back to LINE/I class if species has no BLAST hits.
+    """
+    fams = gremlin_families.get(species)
+    if fams:
+        mask = gff_df["te_name"].isin(fams)
+        result = gff_df[mask].copy()
+        if result.empty:
+            # Family names may be in different case (RND-1_FAMILY-124 vs rnd-1_family-124)
+            fams_lower = {f.lower() for f in fams}
+            mask = gff_df["te_name"].str.lower().isin(fams_lower)
+            result = gff_df[mask].copy()
+        return result
+    else:
+        # Fallback: all LINE/I elements
+        mask = gff_df["te_class"].str.startswith("LINE/I")
+        return gff_df[mask].copy()
+
+def filter_ltr(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep LTR/Copia + LTR/Gypsy + LTR/DIRS rows (BED col4 = class)."""
+    mask = df["te_class"].str.match(r"LTR/(Copia|Gypsy|DIRS)")
+    return df[mask].copy()
+
+def filter_line_i(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only LINE/I and LINE/I-Jockey rows (BED col4 = class, legacy use)."""
+    mask = df["te_class"].str.startswith("LINE/I")
+    return df[mask].copy()
+
+def _density_clusters(ltr_df: pd.DataFrame,
+                       window: int = DENSITY_WINDOW,
+                       min_count: int = MIN_BIN_COUNT):
+    """
+    Identify LTR-dense genomic bins and merge adjacent hot bins into clusters.
+    Returns (n_clusters, cluster_df with chrom/start/end/n_elements).
+    Works with any assembly quality — no contig-size filter required.
+    """
+    if ltr_df.empty:
+        return 0, pd.DataFrame(columns=["chrom","start","end","n_elements"])
+    ltr = ltr_df.copy()
+    ltr["bin_idx"] = ltr["start"] // window
+    bcounts = ltr.groupby(["chrom","bin_idx"]).size().reset_index(name="n")
+    hot = bcounts[bcounts["n"] >= min_count].sort_values(["chrom","bin_idx"])
+    if hot.empty:
+        return 0, pd.DataFrame(columns=["chrom","start","end","n_elements"])
+    # merge adjacent bins on the same chromosome
+    clusters = []
+    cur: dict | None = None
+    for _, row in hot.iterrows():
+        if cur is None or row["chrom"] != cur["chrom"] or row["bin_idx"] > cur["end_bin"] + 1:
+            if cur is not None:
+                clusters.append(cur)
+            cur = {"chrom": row["chrom"], "start_bin": int(row["bin_idx"]),
+                   "end_bin": int(row["bin_idx"]), "n_elements": int(row["n"])}
+        else:
+            cur["end_bin"] = int(row["bin_idx"])
+            cur["n_elements"] += int(row["n"])
+    if cur is not None:
+        clusters.append(cur)
+    clust_df = pd.DataFrame([{
+        "chrom":      c["chrom"],
+        "start":      c["start_bin"] * window,
+        "end":        (c["end_bin"] + 1) * window,
+        "n_elements": c["n_elements"]
+    } for c in clusters])
+    return len(clusters), clust_df
+
+def bedtools_merge(df: pd.DataFrame, dist: int = MERGE_DIST) -> pd.DataFrame:
+    """Run bedtools merge -d dist on a BED DataFrame; return merged intervals."""
+    if df.empty:
+        return pd.DataFrame(columns=["chrom","start","end"])
+    bed_str = "\n".join(f"{r.chrom}\t{r.start}\t{r.end}" for _, r in df.iterrows())
+    # sort first
+    sort_proc = subprocess.run(
+        ["sort", "-k1,1", "-k2,2n"],
+        input=bed_str, capture_output=True, text=True
+    )
+    merge_proc = subprocess.run(
+        ["bedtools", "merge", "-d", str(dist), "-c", "1", "-o", "count"],
+        input=sort_proc.stdout, capture_output=True, text=True
+    )
+    if merge_proc.returncode != 0:
+        raise RuntimeError(f"bedtools merge failed: {merge_proc.stderr}")
+    lines = [l.split("\t") for l in merge_proc.stdout.strip().split("\n") if l]
+    if not lines:
+        return pd.DataFrame(columns=["chrom","start","end","n_elements"])
+    merged = pd.DataFrame(lines, columns=["chrom","start","end","n_elements"])
+    merged["start"] = merged["start"].astype(int)
+    merged["end"]   = merged["end"].astype(int)
+    merged["n_elements"] = merged["n_elements"].astype(int)
+    merged["span"] = merged["end"] - merged["start"]
+    return merged
+
+def bedtools_intersect_count(a_df: pd.DataFrame, b_path: Path) -> pd.DataFrame:
+    """Intersect a_df BED regions with b_path BED; return a_df with added 'n_overlaps' col."""
+    if a_df.empty:
+        a_df["n_overlaps"] = 0
+        return a_df
+    bed_str = "\n".join(f"{r.chrom}\t{r.start}\t{r.end}" for _, r in a_df.iterrows())
+    proc = subprocess.run(
+        ["bedtools", "intersect", "-a", "stdin", "-b", str(b_path), "-c"],
+        input=bed_str, capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"bedtools intersect failed: {proc.stderr}")
+    lines = [l.split("\t") for l in proc.stdout.strip().split("\n") if l]
+    res = pd.DataFrame(lines, columns=["chrom","start","end","n_overlaps"])
+    res["start"] = res["start"].astype(int)
+    res["end"]   = res["end"].astype(int)
+    res["n_overlaps"] = res["n_overlaps"].astype(int)
+    return res
+
+def parse_kimura_gff(gff_file: Path, te_filter: str = "LINE/I") -> list:
+    """Extract kimura80 values for elements matching te_filter from a filteredRepeats.gff."""
+    values = []
+    pat = re.compile(r"kimura80=([0-9.]+)")
+    with open(gff_file) as fh:
+        for line in fh:
+            if line.startswith("#"):
+                continue
+            parts = line.rstrip().split("\t")
+            if len(parts) < 9:
+                continue
+            te_class = parts[2]
+            if not te_class.startswith(te_filter):
+                continue
+            m = pat.search(parts[8])
+            if m:
+                try:
+                    values.append(float(m.group(1)))
+                except ValueError:
+                    pass
+    return values
+
+# ── ANALYSIS 1+3: LINE/I cluster detection + orientation bias ─────────────────
+
+def analyse_clusters(species_list: list, gremlin_families: dict,
+                     label: str = "gremlin") -> pd.DataFrame:
+    """
+    For each species in species_list:
+      - Load filteredRepeats.gff (for family-name filtering)
+      - Filter to Grem-LINE1 families (BLAST-identified or LINE/I fallback)
+      - bedtools merge -d 50 kb
+      - Keep clusters ≥ MIN_ELEMENTS and ≥ MIN_SPAN bp
+      - Compute per-cluster orientation bias (binomial test vs p=0.5)
+    Returns a summary DataFrame.
+    """
+    cluster_dir = OUTDIR / "gremlin_clusters"
+    cluster_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    for sp in species_list:
+        gp = gff_path(sp)
+        if not gp.exists():
+            print(f"  WARN: {gp} not found, skipping {sp}")
+            continue
+        df = load_gff_as_bed(gp)
+        sub = filter_gremlins(df, sp, gremlin_families)
+
+        n_elements = len(sub)
+        merged = bedtools_merge(sub)
+
+        # Filter clusters
+        clusters = merged[(merged["n_elements"] >= MIN_ELEMENTS) &
+                          (merged["span"] >= MIN_SPAN)].copy()
+        n_clusters = len(clusters)
+
+        # Orientation bias: per cluster, count + and - strands in original elements
+        orient_biased = 0
+        if not clusters.empty and not sub.empty:
+            for _, cl in clusters.iterrows():
+                el = sub[(sub["chrom"] == cl["chrom"]) &
+                         (sub["start"] >= cl["start"]) &
+                         (sub["end"]   <= cl["end"])]
+                n_plus  = (el["strand"] == "+").sum()
+                n_minus = (el["strand"] == "-").sum()
+                n_total = n_plus + n_minus
+                if n_total >= 2:
+                    res = binomtest(int(max(n_plus, n_minus)), int(n_total), 0.5, alternative="greater")
+                    if res.pvalue < 0.05:
+                        orient_biased += 1
+
+        # Save per-species cluster BED
+        if not clusters.empty:
+            out_bed = cluster_dir / f"{sp}_{label}_clusters.bed"
+            clusters[["chrom","start","end","n_elements","span"]].to_csv(
+                out_bed, sep="\t", index=False, header=False
+            )
+
+        rows.append({
+            "species":       sp,
+            "n_LINE_I":      n_elements,
+            "n_clusters":    n_clusters,
+            "clusters_orient_biased": orient_biased,
+            "clusters_total": n_clusters,
+        })
+        print(f"  {sp}: {n_elements} elements → {n_clusters} clusters "
+              f"({orient_biased} orientation-biased)")
+
+    return pd.DataFrame(rows)
+
+
+# ── ANALYSIS 2: H3K9me3 validation (Rhizopus) ────────────────────────────────
+
+def analyse_h3k9me3(rhimi_gff: Path, h3k9_bed: Path, gremlin_families: dict) -> dict:
+    """
+    1. Load Grem-LINE1 elements for MU_Rhimi59 (BLAST-identified families).
+    2. Load H3K9me3 MACS2 broad peaks.
+    3. Mark "pericentromeric" peaks: start < H3K9_START_MAX OR score > H3K9_SCORE_MIN.
+    4. Intersect Grem-LINE1 elements with H3K9me3 peaks.
+    5. Fisher's exact: gremlin enrichment inside vs outside H3K9me3 domains.
+    6. Return stats dict + per-scaffold data for plotting.
+    """
+    out_dir = OUTDIR / "h3k9me3_validation"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    gff_df  = load_gff_as_bed(rhimi_gff)
+    line_i  = filter_gremlins(gff_df, "MU_Rhimi59", gremlin_families)
+    all_te  = gff_df[~gff_df["te_class"].isin(SKIP_TE)]
+
+    # Load H3K9me3 peaks
+    h3k9 = pd.read_csv(h3k9_bed, sep="\t", header=None,
+                        names=["chrom","start","end","name","score","strand",
+                               "fold_enrichment","log10p","log10q"])
+    h3k9_strong = h3k9[(h3k9["start"] < H3K9_START_MAX) | (h3k9["score"] > H3K9_SCORE_MIN)]
+
+    # Save strong peaks temp BED
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".bed", delete=False) as tmp:
+        for _, r in h3k9_strong.iterrows():
+            tmp.write(f"{r.chrom}\t{r.start}\t{r.end}\n")
+        tmp_path = Path(tmp.name)
+
+    # Intersect LINE/I elements with strong H3K9me3
+    li_intersect = bedtools_intersect_count(
+        line_i[["chrom","start","end"]].reset_index(drop=True), tmp_path
+    )
+    li_in_h3k9  = (li_intersect["n_overlaps"] > 0).sum()
+    li_out_h3k9 = (li_intersect["n_overlaps"] == 0).sum()
+
+    # Background: non-LINE/I TE elements
+    other_te = all_te[~all_te["te_class"].str.startswith("LINE/I")][["chrom","start","end"]].reset_index(drop=True)
+    other_intersect = bedtools_intersect_count(other_te, tmp_path)
+    other_in  = (other_intersect["n_overlaps"] > 0).sum()
+    other_out = (other_intersect["n_overlaps"] == 0).sum()
+
+    odds, pval = fisher_exact([[li_in_h3k9, li_out_h3k9],
+                                [other_in,   other_out]], alternative="greater")
+    tmp_path.unlink(missing_ok=True)
+
+    # Per-scaffold: count LINE/I elements + H3K9me3 score
+    li_per_scaffold   = line_i.groupby("chrom").size().rename("n_LINE_I")
+    h3k9_per_scaffold = h3k9.groupby("chrom")["score"].max().rename("h3k9_max_score")
+    scaffold_df = pd.concat([li_per_scaffold, h3k9_per_scaffold], axis=1).fillna(0).reset_index()
+    scaffold_df.to_csv(out_dir / "rhimi59_scaffold_LINE_I_H3K9.tsv", sep="\t", index=False)
+
+    stats = {
+        "n_LINE_I":       len(line_i),
+        "li_in_h3k9":     int(li_in_h3k9),
+        "li_out_h3k9":    int(li_out_h3k9),
+        "other_in_h3k9":  int(other_in),
+        "other_out_h3k9": int(other_out),
+        "fisher_OR":      float(odds),
+        "fisher_pval":    float(pval),
+        "n_strong_peaks": len(h3k9_strong),
+        "scaffold_df":    scaffold_df,
+    }
+
+    with open(out_dir / "rhimi59_h3k9_stats.txt", "w") as fh:
+        for k, v in stats.items():
+            if k != "scaffold_df":
+                fh.write(f"{k}\t{v}\n")
+    print(f"  Rhizopus H3K9me3: LINE/I in H3K9={li_in_h3k9}/{len(line_i)} "
+          f"OR={odds:.2f} p={pval:.4f}")
+    return stats
+
+
+# ── ANALYSIS 4: Copy number + Kimura80 dynamics ───────────────────────────────
+
+def analyse_divergence(species_list: list, gremlin_families: dict) -> pd.DataFrame:
+    """Extract Grem-LINE1 kimura80 per species from filteredRepeats.gff."""
+    rows = []
+    for sp in species_list:
+        gp = gff_path(sp)
+        if not gp.exists():
+            print(f"  WARN: {gp} not found")
+            continue
+        gff_df  = load_gff_as_bed(gp)
+        gremlins = filter_gremlins(gff_df, sp, gremlin_families)
+        k80_vals = gremlins["kimura80"].dropna().tolist()
+        if not k80_vals:
+            rows.append({"species": sp, "n_gremlin_gff": 0,
+                         "mean_k80": np.nan, "median_k80": np.nan, "max_k80": np.nan})
+            continue
+        rows.append({
+            "species":       sp,
+            "n_gremlin_gff": len(k80_vals),
+            "mean_k80":      float(np.mean(k80_vals)),
+            "median_k80":    float(np.median(k80_vals)),
+            "max_k80":       float(np.max(k80_vals)),
+        })
+    df = pd.DataFrame(rows)
+    out = OUTDIR / "gremlin_clusters" / "MU_gremlin_divergence_summary.tsv"
+    df.to_csv(out, sep="\t", index=False)
+    return df
+
+
+# ── ANALYSIS 5: BL LTR clusters ──────────────────────────────────────────────
+
+def analyse_bl_ltr(gremlin_families: dict) -> pd.DataFrame:
+    """
+    Run LTR cluster detection on BL species using density-based binning.
+    Bins the genome into DENSITY_WINDOW-bp windows; a cluster is a window
+    (or group of adjacent windows) with >= MIN_BIN_COUNT LTR elements.
+    No contig-size filter — robust to assembly fragmentation.
+    Reference: Myers 2025 found 13 LTR clusters in Allomyces (= 13 chromosomes).
+    """
+    print(f"\nAnalysis 5: BL LTR clusters (density bins: {DENSITY_WINDOW//1000} kb, "
+          f"min {MIN_BIN_COUNT} elements/bin)")
+    out_dir = OUTDIR / "bl_ltr_clusters"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for sp in BL_SPECIES:
+        bp = bed_path(sp)
+        if not bp.exists():
+            print(f"  WARN: {bp} not found")
+            continue
+        df  = load_bed(bp)
+        ltr = filter_ltr(df)
+        n_ltr = len(ltr)
+        n_ltr_clusters, clust_df = _density_clusters(ltr)
+        # Grem-LINE1 density clusters (for cross-reference)
+        gff_p = gff_path(sp)
+        if gff_p.exists():
+            gff_df = load_gff_as_bed(gff_p)
+            li     = filter_gremlins(gff_df, sp, gremlin_families)
+            n_li_clusters, _ = _density_clusters(li)
+            n_li = len(li)
+        else:
+            n_li, n_li_clusters = 0, 0
+        if not clust_df.empty:
+            clust_df[["chrom","start","end","n_elements"]].to_csv(
+                out_dir / f"{sp}_LTR_density_clusters.bed", sep="\t", index=False, header=False
+            )
+        rows.append({
+            "species":            sp,
+            "n_LTR_elements":     n_ltr,
+            "n_LTR_clusters":     n_ltr_clusters,
+            "n_gremlin":          n_li,
+            "n_gremlin_clusters": n_li_clusters,
+        })
+        print(f"  {sp}: LTR {n_ltr} elements → {n_ltr_clusters} density-clusters; "
+              f"gremlin {n_li} → {n_li_clusters} clusters")
+    return pd.DataFrame(rows)
+
+
+# ── ANALYSIS 6: TF-gremlin enrichment from FIMO ──────────────────────────────
+
+def analyse_tf_gremlin() -> pd.DataFrame:
+    """Load fimo_enrichment.tsv; filter LINE/I; return top enriched TFs."""
+    if not FIMO_TSV.exists():
+        print(f"  WARN: {FIMO_TSV} not found — skipping Analysis 6")
+        return pd.DataFrame()
+    fimo = pd.read_csv(FIMO_TSV, sep="\t")
+    li = fimo[fimo["te_class"].str.startswith("LINE/I")].copy()
+    li_sig = li[(li["fisher_pval"] < 0.05) & (li["log2_odds_ratio"] > 0)].copy()
+    li_sig = li_sig.sort_values("log2_odds_ratio", ascending=False)
+    out = OUTDIR / "tf_gremlin_enrichment.tsv"
+    li_sig.to_csv(out, sep="\t", index=False)
+    print(f"  FIMO: {len(li_sig)} significant TF-LINE/I enrichments")
+    return li_sig
+
+
+# ── ANALYSIS 7: Age distribution vs clade divergence (Haase Fig.2h) ──────────
+
+def analyse_age_distribution(species_list: list, gremlin_families: dict) -> dict:
+    """
+    Collect K80 from Grem-LINE1 elements across all MU species,
+    convert to Ma with two mutation rates.
+    Returns (ages_by_rate_dict, raw_k80_array).
+    """
+    all_k80 = []
+    for sp in species_list:
+        gp = gff_path(sp)
+        if not gp.exists():
+            continue
+        gff_df  = load_gff_as_bed(gp)
+        gremlins = filter_gremlins(gff_df, sp, gremlin_families)
+        vals = gremlins["kimura80"].dropna().tolist()
+        all_k80.extend(vals)
+
+    all_k80 = np.array(all_k80, dtype=float)
+    # Remove outliers (K80 > 1.5 = likely fragmented copies)
+    all_k80 = all_k80[all_k80 <= 1.5]
+
+    ages_by_rate = {}
+    for label, mu in MU_RATES.items():
+        # Age (Ma) = K80 / (2 * mu * 1e6)
+        ages_ma = (all_k80 / (2.0 * mu)) / 1e6
+        ages_by_rate[label] = ages_ma
+
+    np.save(OUTDIR / "all_gremlin_k80.npy", all_k80)
+    print(f"  Age analysis: {len(all_k80)} Grem-LINE1 elements across {len(species_list)} MU species")
+    return ages_by_rate, all_k80
+
+
+# ── FIGURES ───────────────────────────────────────────────────────────────────
+
+def make_figure(cluster_df: pd.DataFrame,
+                h3k9_stats: dict,
+                bl_df: pd.DataFrame,
+                tf_df: pd.DataFrame,
+                ages_by_rate: dict):
+    """
+    5-panel figure:
+      A  LINE/I copy number + cluster count per 63 MU species (bar)
+      B  Rhizopus: per-scaffold LINE/I count vs H3K9me3 score (scatter)
+      C  BL species: LTR and LINE/I cluster counts (grouped bar)
+      D  TF-gremlin enrichment (FIMO log2OR barplot, top enriched)
+      E  LINE/I age distribution vs LCA calibrations (Haase Fig.2h style)
+    """
+    fig = plt.figure(figsize=(20, 22))
+    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.55, wspace=0.45,
+                           height_ratios=[1, 0.8, 0.8])
+    ax_A = fig.add_subplot(gs[0, :])   # full-width top
+    ax_B = fig.add_subplot(gs[1, 0])
+    ax_C = fig.add_subplot(gs[1, 1])
+    ax_D = fig.add_subplot(gs[2, 0])
+    ax_E = fig.add_subplot(gs[2, 1])
+
+    for lbl, ax in zip("ABCDE", [ax_A, ax_B, ax_C, ax_D, ax_E]):
+        ax.text(-0.03, 1.04, lbl, transform=ax.transAxes,
+                fontsize=13, fontweight="bold", va="top")
+
+    _panel_A(ax_A, cluster_df)
+    _panel_B(ax_B, h3k9_stats)
+    _panel_C(ax_C, bl_df)
+    _panel_D(ax_D, tf_df)
+    _panel_E(ax_E, ages_by_rate)
+
+    fig.suptitle(
+        "LINE/I (gremlin) clusters as putative centromere markers in Mucoromycota\n"
+        "Rhizopus microsporus H3K9me3 validation · Blastocladiomycota LTR clusters · "
+        "Insertion age vs clade divergence (Szánthó et al. 2025)",
+        fontsize=11, y=1.005
+    )
+    out = OUTDIR / "gremlin_centromere_analysis.pdf"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"\nSaved: {out}")
+
+
+def _panel_A(ax, df: pd.DataFrame):
+    ax.set_title("A  LINE/I copy number and cluster count per Mucoromycota species",
+                 fontsize=9, loc="left")
+    if df.empty:
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+        return
+    df = df.sort_values("n_LINE_I", ascending=False).reset_index(drop=True)
+    x = np.arange(len(df))
+    w = 0.4
+    ax.bar(x - w/2, df["n_LINE_I"],   width=w, color="#4878CF", alpha=0.85, label="LINE/I copies")
+    ax2 = ax.twinx()
+    ax2.bar(x + w/2, df["n_clusters"], width=w, color="#D65F5F", alpha=0.85, label="Putative centromere clusters")
+    ax.set_xticks(x)
+    ax.set_xticklabels(df["species"].str.replace("MU_",""), rotation=90, fontsize=5.5)
+    ax_A.set_ylabel("Grem-LINE1 copy number", fontsize=8, color="#4878CF")
+    ax2.set_ylabel("Putative centromere clusters (≥3 elements, merged 50 kb)", fontsize=8, color="#D65F5F")
+    ax.tick_params(axis="y", labelcolor="#4878CF")
+    ax2.tick_params(axis="y", labelcolor="#D65F5F")
+    lines1, labels1 = ax.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax.legend(lines1 + lines2, labels1 + labels2, fontsize=7, loc="upper right")
+    ax.set_xlabel("Species (sorted by LINE/I copy number)", fontsize=8)
+
+    # Annotate Rhizopus and Mucor
+    for sp_label, sp_key in [("Rhizopus", "MU_Rhimi59"), ("Mucor circ.", "MU_Muccirc1")]:
+        if sp_key in df["species"].values:
+            idx = df[df["species"] == sp_key].index[0]
+            ax.annotate(sp_label, xy=(idx, df.loc[idx,"n_LINE_I"]),
+                        xytext=(idx, df["n_LINE_I"].max()*0.85),
+                        fontsize=6, ha="center",
+                        arrowprops=dict(arrowstyle="-", color="gray", lw=0.7))
+
+
+def _panel_B(ax, h3k9: dict):
+    ax.set_title("B  Rhizopus: LINE/I density vs H3K9me3 signal per scaffold",
+                 fontsize=9, loc="left")
+    if not h3k9 or h3k9.get("scaffold_df") is None or h3k9["scaffold_df"].empty:
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+        return
+    sdf = h3k9["scaffold_df"]
+    ax.scatter(sdf["n_LINE_I"], sdf["h3k9_max_score"],
+               alpha=0.6, s=25, color="#4878CF", edgecolors="none")
+    # Mann-Whitney annotation
+    has_li = sdf[sdf["n_LINE_I"] > 0]["h3k9_max_score"]
+    no_li  = sdf[sdf["n_LINE_I"] == 0]["h3k9_max_score"]
+    if len(has_li) > 2 and len(no_li) > 2:
+        stat, pval = mannwhitneyu(has_li, no_li, alternative="greater")
+        ax.text(0.97, 0.97,
+                f"Mann-Whitney p={pval:.3f}\n(LINE/I > 0 vs = 0)",
+                transform=ax.transAxes, ha="right", va="top", fontsize=7,
+                bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"))
+    ax.set_xlabel("LINE/I element count per scaffold", fontsize=8)
+    ax.set_ylabel("Max H3K9me3 peak score (MACS2)", fontsize=8)
+    OR  = h3k9.get("fisher_OR", float("nan"))
+    pv  = h3k9.get("fisher_pval", float("nan"))
+    ax.text(0.02, 0.97,
+            f"Fisher OR={OR:.2f}, p={pv:.4f}\n"
+            f"LINE/I in H3K9me3: {h3k9.get('li_in_h3k9',0)}/{h3k9.get('n_LINE_I',0)}",
+            transform=ax.transAxes, ha="left", va="top", fontsize=7,
+            bbox=dict(facecolor="lightyellow", alpha=0.8, edgecolor="none"))
+
+
+def _panel_C(ax, bl_df: pd.DataFrame):
+    ax.set_title("C  Blastocladiomycota: LTR and Grem-LINE1 clusters (50 kb density bins)",
+                 fontsize=9, loc="left")
+    if bl_df.empty:
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+        return
+    x = np.arange(len(bl_df))
+    w = 0.28
+    ax.bar(x - w,   bl_df["n_LTR_clusters"],      width=w, color="#6ABF6A", alpha=0.9, label=f"LTR clusters ({DENSITY_WINDOW//1000} kb density bins, ≥{MIN_BIN_COUNT} elem/bin)")
+    ax.bar(x,       bl_df["n_gremlin_clusters"],   width=w, color="#E07B39", alpha=0.9, label="Grem-LINE1 clusters")
+    ax.axhline(13, color="red", ls="--", lw=1, label="13 (Allomyces chromosomes,\nMyers 2025)")
+    ax.set_xticks(x)
+    ax.set_xticklabels(bl_df["species"].str.replace("BL_",""), rotation=30, ha="right", fontsize=8)
+    ax.set_ylabel(f"Cluster count (≥{MIN_BIN_COUNT} LTR per {DENSITY_WINDOW//1000} kb bin)", fontsize=8)
+    ax.legend(fontsize=7)
+
+
+def _panel_D(ax, tf_df: pd.DataFrame):
+    ax.set_title("D  TF-gremlin enrichment (FIMO, LINE/I + LINE/I-Jockey)",
+                 fontsize=9, loc="left")
+    if tf_df.empty:
+        ax.text(0.5, 0.5, "No significant enrichments", ha="center", va="center",
+                transform=ax.transAxes, fontsize=9)
+        return
+    top = tf_df.head(20).sort_values("log2_odds_ratio")
+    colors = ["#E07B39" if p < 0.01 else "#4878CF" for p in top["fisher_pval"]]
+    ax.barh(range(len(top)), top["log2_odds_ratio"], color=colors, alpha=0.85)
+    ax.set_yticks(range(len(top)))
+    ax.set_yticklabels([f"{r.motif_family} ({r.motif_id})" for _, r in top.iterrows()],
+                       fontsize=7)
+    ax.axvline(0, color="black", lw=0.8)
+    ax.set_xlabel("log₂ odds ratio (FIMO vs shuffled)", fontsize=8)
+    from matplotlib.patches import Patch
+    ax.legend(handles=[Patch(color="#E07B39", label="p < 0.01"),
+                        Patch(color="#4878CF", label="0.01 ≤ p < 0.05")],
+              fontsize=7, loc="lower right")
+
+
+def _panel_E(ax, ages_by_rate: dict):
+    ax.set_title("E  LINE/I insertion age distribution vs Mucoromycota LCA divergence times\n"
+                 "(Szánthó et al. 2025, Nat. Ecol. Evol.)", fontsize=9, loc="left")
+    if not ages_by_rate:
+        ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+        return
+
+    colors = ["black", "gray"]
+    lss    = ["-", "--"]
+    bins   = np.linspace(0, 1500, 61)
+
+    for (label, ages_ma), color, ls in zip(ages_by_rate.items(), colors, lss):
+        ages_clipped = ages_ma[ages_ma <= 1500]
+        counts, edges = np.histogram(ages_clipped, bins=bins)
+        frac = counts / counts.sum() if counts.sum() > 0 else counts
+        centers = (edges[:-1] + edges[1:]) / 2
+        ax.plot(centers, frac, color=color, ls=ls, lw=1.5,
+                marker="o", markersize=2.5, label=label)
+
+    # Vertical lines for LCA calibrations
+    vline_colors = ["#8B0000", "#CC4400", "#008000", "#0000AA"]
+    for (clade, (mid, lo, hi)), vc in zip(CLADE_AGES.items(), vline_colors):
+        ax.axvline(mid, color=vc, lw=1.2, ls=":")
+        ax.axvspan(lo, hi, alpha=0.08, color=vc)
+        y_pos = ax.get_ylim()[1] * 0.85 if ax.get_ylim()[1] > 0 else 0.05
+        ax.text(mid, y_pos, clade, color=vc, fontsize=6.5,
+                rotation=90, va="top", ha="right")
+
+    ax.set_xlabel("Estimated insertion age (Ma)", fontsize=8)
+    ax.set_ylabel("Fraction of LINE/I insertions", fontsize=8)
+    ax.set_xlim(0, 1500)
+    ax.legend(fontsize=7, loc="upper right")
+    ax.text(0.02, 0.97,
+            "K80 vs consensus → Ma via 2 mutation rates\n"
+            "K80 outliers (>1.5) excluded",
+            transform=ax.transAxes, fontsize=6, va="top",
+            color="gray", style="italic")
+
+
+# ── MAIN ──────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--skip-clusters", action="store_true",
+                        help="Skip cluster detection (re-use existing TSV)")
+    parser.add_argument("--skip-age", action="store_true",
+                        help="Skip age analysis (re-use existing .npy)")
+    args = parser.parse_args()
+
+    OUTDIR.mkdir(parents=True, exist_ok=True)
+    (OUTDIR / "gremlin_clusters").mkdir(exist_ok=True)
+    (OUTDIR / "bl_ltr_clusters").mkdir(exist_ok=True)
+    (OUTDIR / "h3k9me3_validation").mkdir(exist_ok=True)
+
+    # ── Load BLAST-identified Grem-LINE1 families per species ────────────────
+    print("=== Loading Grem-LINE1 BLAST family assignments ===")
+    gremlin_families = load_gremlin_families()
+    n_sp_with_fams = sum(1 for v in gremlin_families.values() if v)
+    mode = "BLAST-identified families" if n_sp_with_fams > 0 else "LINE/I class fallback"
+    print(f"  {n_sp_with_fams} species have BLAST-assigned Grem-LINE1 families ({mode})")
+
+    summary_tsv = OUTDIR / "gremlin_clusters" / "MU_gremlin_cluster_summary.tsv"
+
+    # ── Analysis 1 + 3: clusters + orientation bias ──────────────────────────
+    if not args.skip_clusters or not summary_tsv.exists():
+        print("=== Analysis 1+3: Grem-LINE1 cluster detection (63 MU species) ===")
+        cluster_df = analyse_clusters(MU_SPECIES, gremlin_families, label="gremlin")
+        cluster_df.to_csv(summary_tsv, sep="\t", index=False)
+    else:
+        print(f"Loading existing cluster summary from {summary_tsv}")
+        cluster_df = pd.read_csv(summary_tsv, sep="\t")
+
+    # ── Analysis 4: divergence dynamics ─────────────────────────────────────
+    print("\n=== Analysis 4: Kimura80 divergence dynamics (63 MU species) ===")
+    div_df = analyse_divergence(MU_SPECIES, gremlin_families)
+    # Merge into cluster_df
+    cluster_df = cluster_df.merge(div_df, on="species", how="left")
+    cluster_df.to_csv(summary_tsv, sep="\t", index=False)
+
+    # ── Analysis 2: H3K9me3 validation ──────────────────────────────────────
+    print("\n=== Analysis 2: H3K9me3 validation (MU_Rhimi59) ===")
+    rhimi_gff = gff_path("MU_Rhimi59")
+    if rhimi_gff.exists() and H3K9_BED.exists():
+        h3k9_stats = analyse_h3k9me3(rhimi_gff, H3K9_BED, gremlin_families)
+    else:
+        print("  WARN: Rhizopus GFF or H3K9 BED not found — skipping")
+        h3k9_stats = {}
+
+    # ── Analysis 5: BL LTR clusters ─────────────────────────────────────────
+    bl_df = analyse_bl_ltr(gremlin_families)
+    bl_df.to_csv(OUTDIR / "bl_ltr_clusters" / "BL_LTR_cluster_summary.tsv", sep="\t", index=False)
+
+    # ── Analysis 6: TF-gremlin FIMO ─────────────────────────────────────────
+    print("\n=== Analysis 6: TF-gremlin enrichment (FIMO) ===")
+    tf_df = analyse_tf_gremlin()
+
+    # ── Analysis 7: age distribution ────────────────────────────────────────
+    npy_path = OUTDIR / "all_gremlin_k80.npy"
+    if not args.skip_age or not npy_path.exists():
+        print("\n=== Analysis 7: Grem-LINE1 age distribution ===")
+        ages_by_rate, _ = analyse_age_distribution(MU_SPECIES, gremlin_families)
+    else:
+        print(f"Loading existing K80 array from {npy_path}")
+        all_k80 = np.load(npy_path)
+        all_k80 = all_k80[all_k80 <= 1.5]
+        ages_by_rate = {lbl: (all_k80 / (2.0 * mu)) / 1e6
+                        for lbl, mu in MU_RATES.items()}
+
+    # ── Figure ───────────────────────────────────────────────────────────────
+    print("\n=== Generating figure ===")
+    make_figure(cluster_df, h3k9_stats, bl_df, tf_df, ages_by_rate)
+
+    print("\nDone.")
+
+
+if __name__ == "__main__":
+    main()

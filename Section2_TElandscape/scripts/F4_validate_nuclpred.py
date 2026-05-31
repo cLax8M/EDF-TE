@@ -100,7 +100,11 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     print(f"[{args.species_id}] Loading predicted WIG...")
-    pred = parse_wig_to_arrays(args.predicted_wig)
+    pred_raw = parse_wig_to_arrays(args.predicted_wig)
+    # Strip species prefix added by predict_nucleosomes.py (e.g. 'SP.chrI' -> 'chrI')
+    prefix = args.species_id + "."
+    pred = {(c[len(prefix):] if c.startswith(prefix) else c): v
+            for c, v in pred_raw.items()}
     print(f"[{args.species_id}] Loading observed WIG...")
     obs  = parse_wig_to_arrays(args.observed_wig)
 

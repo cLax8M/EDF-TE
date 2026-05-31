@@ -53,10 +53,26 @@ def parse_args():
     p.add_argument("--shuffle_dir", required=True,
                    help="Directory with per-clade null mean TSVs (step 04)")
     p.add_argument("--out_dir", required=True, help="Output directory")
+    p.add_argument("--whitelist", default=None,
+                   help="Optional species whitelist file (one species_prefix "
+                        "per line). Pairs with either species absent from the "
+                        "whitelist are dropped before normalization.")
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument("--clade", action="append", choices=CLADES_ALL)
     group.add_argument("--all", action="store_true")
     return p.parse_args()
+
+
+def load_whitelist(path):
+    if not path:
+        return None
+    p = Path(path)
+    if not p.exists():
+        print(f"  WARNING: whitelist not found: {p} (no QC filter applied)",
+              file=sys.stderr)
+        return None
+    with open(p) as fh:
+        return {line.strip() for line in fh if line.strip()}
 
 
 def load_collinear_summary(collinear_dir, clade):
@@ -105,7 +121,7 @@ def load_null_means(shuffle_dir, clade):
     return data
 
 
-def compute_ratios(clade, collinear_dir, shuffle_dir, out_dir):
+def compute_ratios(clade, collinear_dir, shuffle_dir, out_dir, whitelist=None):
     """Compute normalized synteny ratios for one clade."""
     print(f"  [{clade}]", end=" ")
 
@@ -115,6 +131,15 @@ def compute_ratios(clade, collinear_dir, shuffle_dir, out_dir):
     if not col_data:
         print("no collinear data — skipping")
         return []
+
+    # Apply QC whitelist: drop pairs where either species fails QC
+    if whitelist is not None:
+        before = len(col_data)
+        col_data = {(a, b): v for (a, b), v in col_data.items()
+                    if a in whitelist and b in whitelist}
+        dropped = before - len(col_data)
+        if dropped > 0:
+            print(f"(QC dropped {dropped}/{before} pairs)", end=" ")
 
     # Merge collinear + null data
     rows = []
@@ -176,9 +201,14 @@ def main():
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    whitelist = load_whitelist(args.whitelist)
+    if whitelist is not None:
+        print(f"QC whitelist loaded: {len(whitelist)} species")
+
     all_rows = []
     for clade in target_clades:
-        rows = compute_ratios(clade, args.collinear_dir, args.shuffle_dir, out_dir)
+        rows = compute_ratios(clade, args.collinear_dir, args.shuffle_dir,
+                              out_dir, whitelist=whitelist)
         for r in rows:
             r["clade"] = clade
         all_rows.extend(rows)

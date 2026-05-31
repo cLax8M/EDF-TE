@@ -26,14 +26,27 @@ import pandas as pd
 from collections import defaultdict
 
 
+# Non-TE repeat classes within subclass="Other" that must be excluded:
+# structural RNAs, simple/satellite repeats, artefacts, chromosomal features.
+NON_TE_SF = frozenset({
+    "Simple_repeat", "Low_complexity", "Satellite",
+    "rRNA", "tRNA", "snRNA", "scRNA", "sno", "srpRNA",
+    "ARTEFACT", "acro", "centr", "subtelo", "DNA_virus", "RNA", "Y",
+})
+
+
 def load_divergence(divergence_file):
-    """Load *_divergence_summary_table.tsv, return DataFrame."""
+    """Load *_divergence_summary_table.tsv, return DataFrame of true TE rows."""
     df = pd.read_csv(divergence_file, sep="\t")
     # Drop rows with no divergence data
     df = df.dropna(subset=["mean_div", "total_bp"])
     df["mean_div"] = pd.to_numeric(df["mean_div"], errors="coerce")
     df["total_bp"] = pd.to_numeric(df["total_bp"], errors="coerce")
     df = df.dropna(subset=["mean_div", "total_bp"])
+    # Exclude non-TE repeats (structural RNAs, simple/satellite repeats, etc.)
+    # that RepeatMasker classifies under subclass="Other"
+    non_te_mask = (df["subclass"] == "Other") & (df["superfamily"].isin(NON_TE_SF))
+    df = df[~non_te_mask].copy()
     return df
 
 

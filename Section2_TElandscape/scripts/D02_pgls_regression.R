@@ -36,7 +36,7 @@ rownames(df) <- df$species
 
 # ── define response and predictor variables ───────────────────
 te_responses <- c("pct_TE_total", "pct_DNA", "pct_LTR",
-                  "pct_LINE", "pct_RC", "pct_Unknown")
+                  "pct_LINE", "pct_RC", "pct_PLE", "pct_Unknown")
 
 genomic_predictors <- c("Genome_Size_bp", "Pct_Intronic", "Pct_Intergenic",
                         "Avg_Introns_Multiexon", "Total_Genes",

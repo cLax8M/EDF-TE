@@ -66,19 +66,19 @@ for code in ["AP","BL","BS","CH","CR","EN","GL","KX","MI","MO","MU","OL","ZO"]:
 GROUP_COLORS = {
     "Holozoa":    "#e63946",
     "Nucleariida":"#f4a261",
-    "EDF":        "#2a9d8f",
-    "Dikarya":    "#457b9d",
+    "EDF":        "#e9b949",
+    "Dikarya":    "#1d3557",
 }
 GROUP_ALPHA = {
     "Holozoa": 0.85, "Nucleariida": 0.85,
     "EDF": 0.55,     "Dikarya": 0.55,
 }
 
-# Per-clade distinct colors: EDF = yellow→green gradient, HO = reds, NU = orange,
+# Per-clade distinct colors: EDF = yellow→brown gradient, HO = reds, NU = orange,
 # AS = cornflower blues, BA = navy blues
 import matplotlib.cm as _cm
 _edf_sorted = ["AP","BL","BS","CH","CR","EN","GL","KX","MI","MO","MU","OL","ZO"]
-_edf_cmap   = _cm.YlGn(np.linspace(0.35, 0.95, len(_edf_sorted)))
+_edf_cmap   = _cm.YlOrBr(np.linspace(0.30, 0.85, len(_edf_sorted)))
 
 CLADE_COLORS = {cl: _edf_cmap[i] for i, cl in enumerate(_edf_sorted)}
 CLADE_COLORS.update({

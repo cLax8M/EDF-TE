@@ -17,9 +17,9 @@
 # ============================================================
 
 #SBATCH --job-name=nucseq
-#SBATCH --partition=normal.1000h
+#SBATCH --partition=normal.168h
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=80G
+#SBATCH --mem=32G
 #SBATCH --array=1-5
 #SBATCH --output=/data/carlos/EDF-TE/logs/nucseq/nucseq_%A_%a.log
 #SBATCH --error=/data/carlos/EDF-TE/logs/nucseq/nucseq_%A_%a.err
@@ -72,22 +72,44 @@ echo "[START] ${SPECIES} — SRR: ${SRR_ID}"
 
 # ── skip if already complete ──────────────────────────────────
 # DANPOS3 output: pooled/<input_basename>.Frag.wig
-if [[ -f "${SP_OUT}/${SPECIES}_danpos/pooled/${SPECIES}_dedup.Frag.wig" ]]; then
+# ── skip if already complete ──────────────────────────────────
+if [[ -s "${SP_OUT}/${SPECIES}_danpos/pooled/${SPECIES}_dedup.smooth.wig" ]]; then
     echo "[SKIP] Already complete: ${SPECIES}"
     exit 0
 fi
 
-# ── Step 1: download SRA ──────────────────────────────────────
+# ── Step 1: download SRA — try ENA FTP first, fallback to NCBI prefetch ──────
 echo "[1/5] Downloading ${SRR_ID}..."
-prefetch "${SRR_ID}" --output-directory "${TMPDIR}"
-fasterq-dump "${TMPDIR}/${SRR_ID}" \
-    --outdir "${TMPDIR}" \
-    --threads "${SLURM_CPUS_PER_TASK}" \
-    --split-files
+
+ENA_PREFIX="${SRR_ID:0:6}"
+# ENA subdirectory: based on accession length
+# 9-char: no subdir; 10-char: "00"+last1; 11-char: "0"+last2; 12-char: last3
+SRR_LEN=${#SRR_ID}
+if [[ $SRR_LEN -le 9 ]]; then
+    ENA_BASE="ftp://ftp.sra.ebi.ac.uk/vol1/fastq/${ENA_PREFIX}/${SRR_ID}"
+else
+    EXTRA=$(( SRR_LEN - 9 ))
+    ENA_SUFFIX=$(printf '%03d' "${SRR_ID: -${EXTRA}}")
+    ENA_BASE="ftp://ftp.sra.ebi.ac.uk/vol1/fastq/${ENA_PREFIX}/${ENA_SUFFIX}/${SRR_ID}"
+fi
+
+ENA_OK=false
+wget -q -P "${TMPDIR}" "${ENA_BASE}/${SRR_ID}_1.fastq.gz" 2>/dev/null && \
+    [[ -s "${TMPDIR}/${SRR_ID}_1.fastq.gz" ]] && ENA_OK=true
+
+if [[ "${ENA_OK}" == "true" ]]; then
+    echo "[1/5] ENA download successful"
+    wget -q -P "${TMPDIR}" "${ENA_BASE}/${SRR_ID}_2.fastq.gz" 2>/dev/null || true
+    pigz -d "${TMPDIR}/${SRR_ID}_1.fastq.gz" 2>/dev/null || gunzip "${TMPDIR}/${SRR_ID}_1.fastq.gz"
+    [[ -f "${TMPDIR}/${SRR_ID}_2.fastq.gz" ]] && \
+        { pigz -d "${TMPDIR}/${SRR_ID}_2.fastq.gz" 2>/dev/null || gunzip "${TMPDIR}/${SRR_ID}_2.fastq.gz"; }
+else
+    echo "[ERROR] ENA download failed for ${SRR_ID} — check ENA path or try manual download"
+    exit 1
+fi
 
 R1="${TMPDIR}/${SRR_ID}_1.fastq"
 R2="${TMPDIR}/${SRR_ID}_2.fastq"
-# Handle single-end if no R2
 if [[ ! -f "${R2}" ]]; then
     R2=""
 fi

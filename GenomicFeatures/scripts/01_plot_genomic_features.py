@@ -22,17 +22,15 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
 
-# Phylogenetic order (roughly basal -> derived in Holomycota)
-CLADE_ORDER = ['CR', 'OL', 'ZO', 'GL', 'BL', 'EN', 'KX', 'NU',
-               'BS', 'BA', 'AS', 'CH', 'MI', 'MO', 'MU', 'HO', 'AP']
+# Phylogenetic order (canonical, includes NE)
+CLADE_ORDER = ['HO', 'NU', 'AP', 'CR', 'MI', 'BL', 'OL', 'CH', 'NE',
+               'BS', 'EN', 'ZO', 'KX', 'GL', 'MO', 'MU', 'BA', 'AS']
 
-CLADE_COLORS = {
-    'CR': '#a6cee3', 'OL': '#1f78b4', 'ZO': '#b2df8a', 'GL': '#33a02c',
-    'BL': '#fb9a99', 'EN': '#e31a1c', 'KX': '#fdbf6f', 'NU': '#ff7f00',
-    'BS': '#cab2d6', 'BA': '#6a3d9a', 'AS': '#ffff99', 'CH': '#b15928',
-    'MI': '#8dd3c7', 'MO': '#bebada', 'MU': '#fb8072', 'HO': '#80b1d3',
-    'AP': '#fdb462'
-}
+# Canonical clade palette (single source of truth)
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                   '..', '..', 'Section2_TElandscape', 'scripts'))
+from clade_palette import CLADE_COLORS, CLADE_NAMES, get_clade  # noqa: E402
 
 # (column, y-axis label, log_scale)
 METRICS_BOX = [
@@ -55,7 +53,7 @@ def load_data(tsv_path):
     df['Species'] = df['Species'].str.replace(r'\.aa$', '', regex=True)
     for c in df.columns[1:]:
         df[c] = pd.to_numeric(df[c], errors='coerce')
-    df['Clade'] = df['Species'].str[:2]
+    df['Clade'] = df['Species'].apply(get_clade)
     df = df[df['Clade'].isin(CLADE_ORDER)].copy()
     df['Clade'] = pd.Categorical(df['Clade'], categories=CLADE_ORDER, ordered=True)
     return df.sort_values('Clade').reset_index(drop=True)

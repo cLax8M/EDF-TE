@@ -29,8 +29,12 @@ dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
 tree <- read.tree(tree_file)
 message("[INFO] Tree: ", length(tree$tip.label), " tips")
 
-# ── collect TE percentages per species ───────────────────────
-te_classes <- c("DNA", "LTR", "LINE", "SINE", "Rolling Circle", "Unknown")
+# Classes as they appear in highLevelCount.txt (base names, without -nested suffix)
+# "Unclassified" = what EarlGrey calls unknown/unclassified TE families
+# "Total Interspersed Repeat" and "Non-Repeat" are summary rows — must be excluded
+SKIP_CLASSES  <- c("Total Interspersed Repeat", "Non-Repeat")
+TE_CLASSES    <- c("DNA", "LTR", "LINE", "SINE", "Rolling Circle", "Penelope", "Unclassified")
+OTHER_CLASS   <- "Other (Simple Repeat, Microsatellite, RNA)"
 sp_data <- list()
 
 entries <- list.dirs(annotated_dir, full.names = TRUE, recursive = FALSE)
@@ -54,14 +58,17 @@ for (sp_dir in entries) {
   if (is.na(pct_col) || is.na(class_col)) next
 
   df[[class_col]] <- trimws(df[[class_col]])
-  # Merge nested into parent
+  # Merge nested into parent (remove "-nested" suffix), then drop summary rows
   df[[class_col]] <- gsub("-nested$", "", df[[class_col]])
+  df <- df[!(df[[class_col]] %in% SKIP_CLASSES), ]
+
   agg <- tapply(as.numeric(df[[pct_col]]), df[[class_col]], sum, na.rm = TRUE)
-  total_te <- sum(agg, na.rm = TRUE)
+  # total_te = true TE classes only (excludes non-TE summary rows)
+  total_te <- sum(agg[names(agg) %in% TE_CLASSES], na.rm = TRUE)
 
   row <- c(total_te = total_te)
-  for (cl in te_classes) {
-    row[paste0("pct_", gsub(" ", "_", cl))] <- ifelse(cl %in% names(agg), agg[[cl]], 0)
+  for (cl in TE_CLASSES) {
+    row[paste0("pct_", gsub("[ /]", "_", cl))] <- ifelse(cl %in% names(agg), agg[[cl]], 0)
   }
   sp_data[[sp]] <- row
 }
@@ -78,7 +85,7 @@ rownames(sp_df) <- sp_df$species
 message("[INFO] Species for reconstruction: ", nrow(sp_df))
 
 # ── ancestral reconstruction (BM) for each TE class ──────────
-trait_cols <- c("total_te", paste0("pct_", gsub(" ", "_", te_classes)))
+trait_cols <- c("total_te", paste0("pct_", gsub("[ /]", "_", TE_CLASSES)))
 anc_results <- list()
 
 for (trait in trait_cols) {

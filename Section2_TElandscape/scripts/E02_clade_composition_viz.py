@@ -30,6 +30,11 @@ import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import seaborn as sns
 
+# Canonical clade + TE class palette (single source of truth)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from clade_palette import (CLADE_COLORS, CLADE_NAMES, CLADE_ORDER,
+                            TE_CLASS_COLORS, get_clade)  # noqa: E402
+
 # ── config ────────────────────────────────────────────────────────────────────
 EARLGREY_DIR  = sys.argv[1] if len(sys.argv) > 1 else \
     "/data/carlos/EDF-TE/TE_analysis/annotated"
@@ -58,23 +63,15 @@ CLASS_MAP = {
 }
 TE_CLASSES = ["LTR", "DNA", "LINE", "SINE", "Rolling Circle", "Penelope", "Unclassified"]
 
-# Colour palette — one per TE class, fixed
-CLASS_COLORS = {
-    "LTR":           "#e63946",
-    "DNA":           "#457b9d",
-    "LINE":          "#2a9d8f",
-    "SINE":          "#e9c46a",
-    "Rolling Circle":"#f4a261",
-    "Penelope":      "#a8dadc",
-    "Unclassified":  "#adb5bd",
-}
+# Colour palette — match canonical cladogram TE class palette
+CLASS_COLORS = {c: TE_CLASS_COLORS[c] for c in TE_CLASSES}
 
 # ── 1. parse EarlGrey files ───────────────────────────────────────────────────
 records = []
 for fp in sorted(glob.glob(os.path.join(EARLGREY_DIR,
                  "*_EarlGrey", "*_summaryFiles", "*.highLevelCount.txt"))):
     sp = os.path.basename(fp).replace(".highLevelCount.txt", "")
-    clade = sp[:2]
+    clade = get_clade(sp)
     bp_by_class = {c: 0.0 for c in TE_CLASSES}
     genome_size = None
     total_bp = 0.0
@@ -103,6 +100,11 @@ for fp in sorted(glob.glob(os.path.join(EARLGREY_DIR,
         print(f"[WARN] {sp}: {e}")
 
 df_all = pd.DataFrame(records)
+# Drop control yeasts (VL clade) globally — user request 2026-04-21
+n_before = len(df_all)
+df_all = df_all[~df_all["species"].str.startswith("VL_")].reset_index(drop=True)
+if len(df_all) != n_before:
+    print(f"[filter] dropped {n_before - len(df_all)} VL species")
 
 # Compute proportions (fraction of total TE bp)
 total_te_bp = df_all[TE_CLASSES].sum(axis=1).replace(0, np.nan)
@@ -180,10 +182,16 @@ for ax_idx, clade in enumerate(clades):
             tick.set_fontweight("bold")
 
     # Add markers above bars: ● (coloured dot = driving TE class) and/or *
-    # Compute which TE class deviates most for composition outliers
+    # Driver = TE class with max |z-score| (clade-SD-normalised), so that a
+    # small absolute deviation in a low-variance class (e.g. Penelope, RC)
+    # correctly outranks a moderate deviation in a high-variance class (LTR).
+    # A ▲/▼ glyph next to the dot encodes the SIGN of the deviation
+    # (over/under-represented vs the clade mean), so a red dot can no longer
+    # be misread as "high LTR" when the species actually has less LTR.
     if os.path.exists(OUTLIERS_TSV):
         df_dev_clade = df_all[df_all["clade"] == clade].copy()
         clade_mean = df_dev_clade[prop_cols].mean()
+        clade_sd   = df_dev_clade[prop_cols].std().replace(0, np.nan)
         for i, (_, sp_row) in enumerate(sub.iterrows()):
             is_comp = sp_row["outlier_composition"]
             is_univ = sp_row["outlier_univariate"]
@@ -194,13 +202,24 @@ for ax_idx, clade in enumerate(clades):
                         fontsize=8, color="black", fontweight="bold")
                 offset += 0.06
             if is_comp:
-                # Find which class drives the outlier (max |deviation|)
-                devs = {c: abs(sp_row[f"prop_{c}"] - clade_mean[f"prop_{c}"])
-                        for c in TE_CLASSES}
-                driver = max(devs, key=devs.get)
+                # Find the class with max |z| (per-clade SD-normalised).
+                z_devs = {c: ((sp_row[f"prop_{c}"] - clade_mean[f"prop_{c}"])
+                              / clade_sd[f"prop_{c}"])
+                          for c in TE_CLASSES
+                          if not np.isnan(clade_sd[f"prop_{c}"])}
+                if not z_devs:
+                    continue
+                driver = max(z_devs, key=lambda c: abs(z_devs[c]))
+                z_drv  = z_devs[driver]
                 ax.plot(i, y_top + offset, "o",
                         color=CLASS_COLORS[driver], markersize=5,
                         markeredgecolor="black", markeredgewidth=0.4,
+                        transform=ax.get_xaxis_transform(),
+                        clip_on=False)
+                glyph = "▲" if z_drv > 0 else "▼"
+                ax.text(i, y_top + offset + 0.045, glyph,
+                        ha="center", va="bottom", fontsize=5,
+                        color=CLASS_COLORS[driver], fontweight="bold",
                         transform=ax.get_xaxis_transform(),
                         clip_on=False)
 
@@ -224,24 +243,44 @@ plt.close()
 print(f"[OK] Stacked bars → {out1}")
 
 # ── 3b. PLOT 1b: EDF-only stacked bars (≥3 species) ─────────────────────────
-EDF_CLADES = {"AP","BL","BS","CH","CR","EN","GL","KX","MI","MO","MU","OL","ZO"}
+EDF_CLADES = {"AP","BL","BS","CH","CR","EN","GL","KX","MI","MO","MU","NE","OL","ZO"}
 edf_clades_ok = [cl for cl in sorted(df_all["clade"].unique())
                  if cl in EDF_CLADES and (df_all["clade"] == cl).sum() >= 3]
+# Move MU to the last position so we can give it its own wider bottom panel
+if "MU" in edf_clades_ok:
+    edf_clades_ok = [c for c in edf_clades_ok if c != "MU"] + ["MU"]
 print(f"[INFO] EDF clades with ≥3 species: {edf_clades_ok}")
+
+# Use Arial for the EDF panel (fall back silently if not installed)
+import matplotlib as _mpl
+_prev_family = _mpl.rcParams["font.family"]
+_mpl.rcParams["font.family"] = ["Arial", "DejaVu Sans"]
 
 n_edf = len(edf_clades_ok)
 ncols_e = 4
-nrows_e = int(np.ceil(n_edf / ncols_e))
-fig_e, axes_e = plt.subplots(nrows_e, ncols_e,
-                               figsize=(ncols_e * 5, nrows_e * 4.5),
-                               squeeze=False)
-fig_e.suptitle("TE class composition — EDF clades (≥3 genomes)\n"
-               "(red labels = composition outliers  |  ★ = total-TE outlier)",
-               fontsize=14, y=1.01)
+# MU on its own bottom row spanning 2 columns → it gets ~2× the horizontal space
+n_top = n_edf - 1
+nrows_top = int(np.ceil(n_top / ncols_e))
+nrows_e = nrows_top + 1   # +1 for MU row
+fig_e = plt.figure(figsize=(ncols_e * 5.0, nrows_e * 4.8))
+gs_e = fig_e.add_gridspec(nrows_e, ncols_e, hspace=0.55, wspace=0.30)
 
-for ax_idx, clade in enumerate(edf_clades_ok):
-    row_i, col_i = divmod(ax_idx, ncols_e)
-    ax = axes_e[row_i][col_i]
+axes_e_map = {}
+# Top clades laid out left→right, top→bottom (skip MU which is reserved for bottom)
+for ax_idx, clade in enumerate(edf_clades_ok[:-1]):
+    r, c = divmod(ax_idx, ncols_e)
+    axes_e_map[clade] = fig_e.add_subplot(gs_e[r, c])
+# MU spans 2 centre columns of the bottom row
+axes_e_map["MU"] = fig_e.add_subplot(gs_e[nrows_top, 1:3])
+
+fig_e.suptitle("TE class composition — EDF clades (≥3 genomes)\n"
+               "(bold black labels = total-TE % outliers within their clade, |z|>2;\n"
+               " coloured ● above bar = composition outlier — colour marks the TE\n"
+               " class with max |z| in clade-SD units; ▲/▼ shows over/under-representation)",
+               fontsize=13, y=1.005)
+
+for clade in edf_clades_ok:
+    ax = axes_e_map[clade]
 
     sub = df_all[df_all["clade"] == clade].copy()
     sub = sub.sort_values("total_TE_pct", ascending=True).reset_index(drop=True)
@@ -256,57 +295,73 @@ for ax_idx, clade in enumerate(edf_clades_ok):
 
     ax.set_xlim(-0.5, n - 0.5)
     ax.set_ylim(0, 1)
-    ax.set_title(f"{clade}  (n={n})", fontsize=10, fontweight="bold")
+    ax.set_title(f"{clade}  (n={n})", fontsize=11, fontweight="bold")
     ax.set_yticks([0, 0.25, 0.5, 0.75, 1])
-    ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=7)
+    ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=8)
     ax.set_xticks(x)
 
-    tick_labels = []
-    for _, sp_row in sub.iterrows():
-        sp = sp_row["species"]
-        short = sp[3:] if sp[:2] == clade else sp
-        tick_labels.append(short)
-    ax.set_xticklabels(tick_labels, rotation=90, fontsize=5.5)
+    # Use full italic "Genus species" labels from Genome_List.txt;
+    # rotate 45° (right-aligned) for legibility per user request.
+    from clade_palette import species_display as _sd2
+    tick_labels = [_sd2(sp, italic=True) for sp in sub["species"]]
+    ax.set_xticklabels(tick_labels, rotation=45, ha="right",
+                       rotation_mode="anchor", fontsize=8, fontstyle="italic")
 
     ax.figure.canvas.draw()
+    # Bold + black for total-TE % outliers ONLY (not composition)
     for tick, (_, sp_row) in zip(ax.get_xticklabels(), sub.iterrows()):
-        if sp_row["outlier_composition"] or sp_row["outlier_univariate"]:
-            tick.set_color("red")
+        if sp_row["outlier_univariate"]:
+            tick.set_color("black")
             tick.set_fontweight("bold")
+            tick.set_fontsize(9)
 
-    df_dev_clade = df_all[df_all["clade"] == clade].copy()
-    clade_mean = df_dev_clade[prop_cols].mean()
-    for i, (_, sp_row) in enumerate(sub.iterrows()):
-        is_comp = sp_row["outlier_composition"]
-        is_univ = sp_row["outlier_univariate"]
-        y_top = 1.02
-        offset = 0
-        if is_univ:
-            ax.text(i, y_top + offset, "*", ha="center", va="bottom",
-                    fontsize=8, color="black", fontweight="bold")
-            offset += 0.06
-        if is_comp:
-            devs = {c: abs(sp_row[f"prop_{c}"] - clade_mean[f"prop_{c}"])
-                    for c in TE_CLASSES}
-            driver = max(devs, key=devs.get)
-            ax.plot(i, y_top + offset, "o",
-                    color=CLASS_COLORS[driver], markersize=5,
-                    markeredgecolor="black", markeredgewidth=0.4,
-                    transform=ax.get_xaxis_transform(),
-                    clip_on=False)
+    # Coloured circles above bars: composition outlier driver class
+    # (max |z| in clade-SD units, with ▲/▼ for over/under-representation)
+    if os.path.exists(OUTLIERS_TSV):
+        clade_mean = sub[prop_cols].mean()
+        clade_sd   = sub[prop_cols].std().replace(0, np.nan)
+        for i, (_, sp_row) in enumerate(sub.iterrows()):
+            is_comp = bool(sp_row["outlier_composition"])
+            is_univ = bool(sp_row["outlier_univariate"])
+            y_top = 1.02
+            offset = 0.0
+            if is_univ:
+                ax.text(i, y_top + offset, "*", ha="center", va="bottom",
+                        fontsize=10, color="black", fontweight="bold",
+                        transform=ax.get_xaxis_transform(), clip_on=False)
+                offset += 0.06
+            if is_comp:
+                z_devs = {c: ((sp_row[f"prop_{c}"] - clade_mean[f"prop_{c}"])
+                              / clade_sd[f"prop_{c}"])
+                          for c in TE_CLASSES
+                          if not np.isnan(clade_sd[f"prop_{c}"])}
+                if not z_devs:
+                    continue
+                driver = max(z_devs, key=lambda c: abs(z_devs[c]))
+                z_drv  = z_devs[driver]
+                ax.plot(i, y_top + offset, "o",
+                        color=CLASS_COLORS[driver], markersize=7,
+                        markeredgecolor="black", markeredgewidth=0.5,
+                        transform=ax.get_xaxis_transform(),
+                        clip_on=False)
+                glyph = "▲" if z_drv > 0 else "▼"
+                ax.text(i, y_top + offset + 0.05, glyph,
+                        ha="center", va="bottom", fontsize=6,
+                        color=CLASS_COLORS[driver], fontweight="bold",
+                        transform=ax.get_xaxis_transform(),
+                        clip_on=False)
+
     ax.grid(axis="y", alpha=0.25, lw=0.5)
     ax.spines[["top","right"]].set_visible(False)
 
-for ax_idx in range(n_edf, nrows_e * ncols_e):
-    row_i, col_i = divmod(ax_idx, ncols_e)
-    axes_e[row_i][col_i].set_visible(False)
-
 fig_e.legend(handles=legend_patches, loc="lower center", ncol=len(TE_CLASSES),
              fontsize=9, frameon=False, bbox_to_anchor=(0.5, -0.02))
-plt.tight_layout(rect=[0, 0.04, 1, 1])
+plt.tight_layout(rect=[0, 0.04, 1, 0.985])
 out1b = os.path.join(OUT_DIR, "clade_stacked_bars_EDF_only.pdf")
 fig_e.savefig(out1b, dpi=150, bbox_inches="tight")
 plt.close()
+# Restore previous font family for the rest of the script
+_mpl.rcParams["font.family"] = _prev_family
 print(f"[OK] EDF-only stacked bars → {out1b}")
 
 # ── 4. PLOT 2: deviation-from-clade-mean heatmap ──────────────────────────────
