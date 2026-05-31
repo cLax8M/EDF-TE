@@ -843,39 +843,125 @@ retrotransposons, 1 with a Gypsy LTR element.
 
 ### 13. Whole-genome duplication analysis
 
-#### 13.1 Paralogous Ks distributions — WGD candidate identification
+WGD detection combined three independent lines of evidence computed for each
+species: (i) synonymous substitution rate (Ks) distributions of the whole-paranome
+(wgd v2), (ii) collinearity-based detection of multiplicons (wgd v2 `syn` module),
+and (iii) gene tree reconciliation–based duplication counts from OrthoFinder.
+Evidence was integrated into a four-category classification, described in §13.6.
+All WGD analyses were restricted to the 131 species with ≤ 50 assembly scaffolds
+(to ensure reliable collinearity detection); the full 320-species dataset was used
+only for the OrthoFinder reconciliation arm (§13.3).
 
-Syntenic blocks computed in Section 4 (SynChro v2.0 self-alignment mode, same
-DIAMOND and RBH parameters as for inter-species analysis, applied to intra-species
-gene pairs) were used to define synteny-based paralogous gene pairs.  For each
-species, all syntenic anchor pairs within a given block were extracted and subjected
-to synonymous substitution rate (Ks) estimation.
+#### 13.1 Genome pre-filtering for collinearity-based analyses
 
-CDS sequences for each syntenic gene pair were codon-aligned using PAL2NAL v14:
+Before running the wgd v2 synteny and Ks pipelines, assemblies were filtered to
+retain only those with ≤ 50 scaffolds/contigs (`scripts/select_genomes_le50_contigs.py`).
+Scaffold count was obtained from the FASTA index (`.fai`) generated with `samtools faidx`.
+This threshold was chosen because wgd v2 `syn` is computationally intractable and
+statistically unreliable on highly fragmented assemblies where true collinear blocks
+are interrupted by assembly gaps.  The 131 assemblies passing this threshold cover
+all 18 clades and include all species previously described as WGD candidates in the
+literature.
+
+#### 13.2 Whole-paranome Ks distribution — wgd v2 `dmd` + Ks pipeline
+
+Whole-paranome all-vs-all protein similarity was computed for each of the 131
+selected species with `wgd dmd` (wgd v2; Zwaenepoel & Van de Peer 2019 updated
+2023):
 
 ```
-pal2nal <protein_aln.faa> <cds1.fa> <cds2.fa> -output paml -nogap
+wgd dmd <proteome.faa> --out-dir <dmd_dir> \
+  --threads 16 --eval 1e-5 --inflation 1.5 \
+  --alignmethod mafft --tree fasttree
 ```
 
-`-nogap` removes any codon triplets containing gaps from the codon alignment.
-Ks values were estimated from the resulting codon alignment with the yn00 program
-from PAML v4.10.10:
+`--inflation 1.5` is the MCL inflation parameter controlling granularity of
+paralogous family clustering (higher values = smaller, more cohesive families).
+`wgd dmd` performs: (1) DIAMOND BLASTP all-vs-all with E ≤ 10⁻⁵; (2) MCL graph
+clustering on bit-score normalised similarities; (3) multiple sequence alignment of
+each family with MAFFT v7.520 (`--auto`); (4) FastTree 2.1.11 (`-gamma -lg`)
+maximum-likelihood tree per family; (5) extraction of all paralogous gene pairs
+within each family.
+
+For each paralogous pair extracted from the MCL-clustered families, the CDS
+sequences were codon-aligned with PAL2NAL v14:
 
 ```
-yn00 <yn00.ctl>   # control file specifies icode=0 (universal codon table)
+pal2nal <protein_pair_aln.faa> <cds_pair.fa> -output paml -nogap
 ```
 
-yn00 implements the Yang & Nielsen (2000) method, which simultaneously estimates
-Ks and Ka (dN) using maximum-likelihood codon substitution models.  Gene pairs with
-Ks = 0 (identical CDS) or Ks > 3.0 (saturation) were excluded.  Each gene is allowed
-to participate in at most one syntenic block; ties resolved by highest DIAMOND
-bitscore.
+`-nogap` removes any codon triplet containing a gap character.  Ks and Ka values
+were estimated from the resulting codon alignment with yn00 (PAML v4.10.10):
 
-#### 13.2 GMM fitting and WGD peak detection
+```
+yn00   # control file: icode = 0 (standard genetic code)
+       #               weighting = 0 (unweighted)
+       #               commonf3x4 = 0 (pair-specific base frequencies)
+```
 
-The per-species Ks distribution of syntenic paralogues (maximum 2,000 randomly
-sub-sampled pairs when > 2,000 pairs existed) was modelled with a Gaussian Mixture
-Model (GMM) using scikit-learn GaussianMixture:
+yn00 implements the Yang & Nielsen (2000) maximum-likelihood codon model, which
+estimates Ks and Ka by simultaneously optimising the transition/transversion ratio,
+codon frequencies, and substitution parameters.  Gene pairs were excluded if:
+Ks = 0 (CDS identity; likely assembly duplicates), Ks > 3.0 (saturation under any
+standard substitution rate), Ka/Ks > 5 (non-synonymous model convergence failure),
+or the codon alignment contained fewer than 100 codons after gap removal.
+The resulting per-species paranome Ks distributions were used for GMM fitting
+(§13.4) and age-correlation analyses (§13.5).
+
+#### 13.3 OrthoFinder gene tree reconciliation — duplication mapping
+
+All 320 species (including fragmented assemblies) were included in the OrthoFinder
+3.1 run described in Section 2.  The `Gene_Duplication_Events/Duplications.tsv`
+file from OrthoFinder records every gene duplication event inferred by gene tree /
+species tree reconciliation (using the STRIDE algorithm; Emms & Kelly 2018), with
+the column `Species Tree Node` indicating the node on the ML species tree (Section 2)
+at which the duplication was mapped.
+
+Duplication rates per species-tree node were computed as normalised counts
+(`scripts/compute_paper_like_duplication_rates.py`):
+
+$$R_n = \frac{D_n}{T_n}$$
+
+where $D_n$ is the count of duplication events mapped to node $n$ in
+`Duplications.tsv`, and $T_n$ is the number of **eligible orthogroups** for node
+$n$ — defined as orthogroups in which species from **both** descending clades of
+node $n$ are represented, after excluding orthogroups where any single species
+contributes > 5 copies (the `--max-species-copies 5` filter, which removes
+lineage-specific gene family expansions that would otherwise inflate node-specific
+duplication counts).
+
+Species-tree nodes at which the normalised rate $R_n$ was classified as an outlier
+(Robust Z-score ≥ 1.5) relative to all nodes of the same type (terminal or
+internal) were tagged as **duplication-peak nodes** (`scripts/detect_duplication_peaks.py`).
+The Robust Z-score was computed as:
+
+$$Z_n = \frac{0.6745\,(R_n - \tilde{R})}{\text{MAD}(R)}$$
+
+where $\tilde{R}$ is the median of all per-node rates across the species tree, and
+$\text{MAD}(R) = \text{median}(|R_n - \tilde{R}|)$.  The constant 0.6745 rescales
+MAD to be consistent with the standard deviation under a Gaussian distribution.
+Per-species signals were summarised as: `deep_peak_nodes` (count of internal
+tree nodes at depth ≥ 2 from the tip classified as duplication-peak), and
+`recent_peak_nodes` (terminal/depth-1 nodes classified as duplication-peak), and
+`max_peak_z` (maximum $Z_n$ over all nodes of that species).
+
+To complement the node-level analysis, a **triplet topology test** was applied to
+each orthogroup containing gene copies from at least one focal species and two
+outgroup species forming a triplet in the species tree.  For each triplet
+(focal, outgroup_1, outgroup_2), the gene tree topology was extracted from the
+OrthoFinder resolved gene trees (`Resolved_Gene_Trees/`).  A topology was
+classified as `topology_ok` if the gene subtree of the focal species was
+monophyletic with respect to both outgroups — i.e. an unambiguous in-paralogue
+group could be distinguished from the outgroup sequences.  The count of `topology_ok`
+orthogroups per focal species (`wgd_candidates_by_species.tsv`) was used as a
+cross-validation signal for the duplication-peak calls.
+
+#### 13.4 GMM fitting and WGD peak detection in the paranome Ks
+
+The per-species paranome Ks distribution (from §13.2; maximum 5,000 randomly
+sub-sampled pairs when more pairs existed, to reduce compute time while preserving
+distribution shape) was modelled with a Gaussian Mixture Model (GMM) using
+scikit-learn GaussianMixture:
 
 ```python
 from sklearn.mixture import GaussianMixture
@@ -893,63 +979,125 @@ Bayesian Information Criterion:
 
 $$\text{BIC}(k) = k \ln n - 2 \ln \hat{L}$$
 
-where $n$ is the number of data points and $\hat{L}$ is the maximised likelihood.
-The $k$ minimising BIC was selected.  A component was reported as a candidate WGD
-peak if its mixture weight ≥ 0.10 AND its mean $\mu_k \in [0.05, 3.0]$, to
-exclude near-zero components (gene conversion artefacts) and saturated components.
+where $n$ is the number of Ks data points and $\hat{L}$ is the maximum likelihood.
+The $k$ minimising BIC was selected.  A GMM component was reported as a candidate
+WGD Ks peak if its mixture weight $w_k \geq 0.10$ AND its mean
+$\mu_k \in [0.05,\, 3.0]$, thereby excluding near-zero components (gene
+conversion / very recent duplicates) and saturated components above the reliable
+estimation range.  The event timing was classified as `ancient_deep` if all
+WGD-peak components had $\mu_k > 0.50$, `recent_terminal` if $\mu_k \leq 0.50$,
+or `mixed_deep_and_recent` if both conditions occurred in different components.
 
-#### 13.3 TE breakpoint enrichment at WGD synteny boundaries
+#### 13.5 Collinearity analysis — wgd v2 `syn` and multiplicons
 
-For each WGD candidate species, the boundaries of inter-species syntenic blocks
-(Section 4) relative to the inferred WGD event were used to define breakpoint
-windows.  A breakpoint was defined as the chromosomal interval between the last
-anchor of one syntenic block and the first anchor of the next syntenic block on the
-same chromosomal scaffold.  Breakpoint windows were expanded by ±5,000 bp from the
-midpoint of this interval.  One hundred randomly positioned windows (same width
-distribution) on the same scaffold were drawn per breakpoint as background.
+For the 131 filtered species (§13.1), intra-genomic collinearity was assessed using
+`wgd syn` (wgd v2):
 
-TE density in breakpoint windows (W) was computed as:
+```
+wgd syn <dmd_families_tsv> <gff3> \
+  --out-dir <syn_dir> \
+  --ks-range 0.05 3.0 \
+  --anchor-ks \
+  --threads 16
+```
 
-$$d_W = \frac{\sum_{i \in W} \text{overlap}(TE_i, W)}{|W|}$$
+`wgd syn` builds a collinearity graph using the MCScan-derived algorithm: it first
+identifies **anchor gene pairs** — paralogous pairs within MCL families whose Ks
+value falls in the specified range — and then clusters anchors into collinear blocks
+by the tandem-chaining heuristic.  Each collinear block is reported as a
+**multiplicon** (equivalent to a paralogon): a pair of genomic segments on the same
+or different chromosomes sharing ≥ 3 anchor gene pairs in the same relative order
+and orientation.  The output files comprise:
+- `*.multiplicons.tsv`: one row per multiplicon (genomic coordinates, n_anchors,
+  n_segments);
+- `*.anchorpoints.tsv`: one row per anchor gene pair within a multiplicon;
+- `*.segments.tsv`: one row per genomic segment participating in a multiplicon.
 
-where $|W|$ is the window length in bp, and $\text{overlap}(TE_i, W)$ is the number
-of base pairs of TE copy $i$ falling within $W$.  A two-sided Wilcoxon signed-rank
-test (scipy.stats.wilcoxon) compared matched breakpoint vs. random window TE densities
-(one observation per breakpoint; paired by breakpoint identity).
+Per-species synteny statistics were aggregated as `n_multiplicons`,
+`n_anchorpoints`, and `n_segments` (`scripts/summarize_synteny_outputs.py`).
+The synteny evidence score was defined as the maximum of the multiplicon and
+segment Robust Z-scores over the 131-species distribution:
 
-Per-superfamily enrichment at breakpoints was tested separately with the same
-Wilcoxon signed-rank test for each superfamily with ≥ 10 breakpoint windows
-containing ≥ 1 bp of that superfamily, corrected for multiple testing (Benjamini–
-Hochberg FDR 5 %).
+$$S_i = \max\!\left(Z_{M,i},\; Z_{S,i}\right)$$
 
-#### 13.4 TE burst — WGD age correlation
+where $Z_{M,i}$ and $Z_{S,i}$ are computed by the same MAD-based Robust Z-score
+formula (§13.3) applied to `n_multiplicons` and `n_segments`, respectively.
+A species was considered to have **synteny evidence** if `syn_completed = 1` AND
+`n_multiplicons > 0`.
 
-WGD ages in Mya were estimated by converting the modal Ks of the WGD peak to
-divergence time using a per-lineage synonymous substitution rate.  Per-lineage rates
-were derived from the time-calibrated divergence dates of the node connecting the
-WGD-experiencing lineage to its sister in the ML species tree, as calibrated using
-the fossil-based nodes described in the companion study.  The rate was applied as:
+The anchor-point Ks distribution (Ks values of anchor gene pairs within multiplicons)
+provides a more precise WGD age estimate than the full paranome, because it filters
+out background small-scale duplications.  The modal Ks of the anchor-Ks distribution,
+extracted as the GMM peak component (§13.4 applied to anchor pairs only), was used
+as the primary WGD age estimate.
 
-$$t_{\text{WGD}} = \frac{\mu_k^{\text{WGD}}}{2 \times r_{\text{syn}}}$$
+#### 13.6 Multi-evidence WGD classification
 
-where $r_{\text{syn}}$ is the synonymous substitution rate per site per year for that
-lineage.
+Species were classified into four WGD categories by combining the three evidence
+streams (`scripts/classify_wgd_evidence.py`; `scripts/integrate_wgd_evidence_paper_like.py`):
 
-For each WGD-positive species, the age distribution of each TE superfamily was
-summarised as the kernel density estimate (KDE) mode of the per-copy Kimura K
-values.  The KDE was computed with `scipy.stats.gaussian_kde` using Scott's rule for
-bandwidth selection.  Spearman's rank correlation between WGD age ($t_{\text{WGD}}$)
-and TE burst KDE mode was computed across all WGD-positive species for each
-superfamily independently, using the two-sided scipy Spearman function with an FDR
-correction across superfamilies (Benjamini–Hochberg 5 %).
+| Classification | Criterion |
+|---|---|
+| **Strong WGD** | $R_n \geq 0.30$ (duplication signal) AND synteny completed AND $n_\text{multiplicons} > 0$ |
+| **Uncertain — duplication only** | $R_n \geq 0.30$ AND ($n_\text{multiplicons} = 0$ OR `syn_completed = 0`) |
+| **Weak / ancient WGD** | $R_n < 0.30$ AND $n_\text{multiplicons} > 0$ AND `syn_completed = 1` |
+| **No WGD** | $R_n < 0.30$ AND ($n_\text{multiplicons} = 0$ OR `syn_completed = 0`) |
 
-#### 13.5 WGD gene duplication rates
+The duplication rate threshold $R_n \geq 0.30$ was calibrated against 12 fungal
+species with previously published WGD evidence (*Saccharomyces cerevisiae*, the
+Rhizopus microsporus complex, *Phytophthora infestans*, etc.); all 12 scored
+$R_n > 0.40$ in our normalised OrthoFinder analysis.  Species with
+`event_timing = mixed_deep_and_recent` (§13.4) were flagged for manual review,
+as this pattern can arise from two independent rounds of duplication or from
+allopolyploidy followed by diploidisation.
 
-Duplication rates per phylogenetic node were computed by counting the number of
-gene pairs in the best-peak GMM component (weight ≥ 0.10, $\mu \in [0.05, 3.0]$)
-and dividing by the estimated WGD age in Mya, yielding units of duplicate pairs
-per Myr.  Ancestral duplication nodes were mapped to the species tree by maximum
-parsimony.
+#### 13.7 TE breakpoint enrichment at WGD synteny boundaries
+
+For each WGD-positive species (Strong WGD or Weak/ancient), the boundaries of
+intra-genomic collinear blocks (wgd v2 multiplicons, §13.5) were used to define
+breakpoint windows — i.e. the regions of the genome where multiplicon adjacency
+is interrupted.  Concretely, a breakpoint was defined as the chromosomal interval
+between the last anchor-point coordinate of one multiplicon and the first
+anchor-point coordinate of the next multiplicon on the same scaffold, sorted by
+genomic position.  Each breakpoint midpoint was expanded by ±5,000 bp.  One hundred
+randomly sampled windows of the same length distribution (sampling with replacement
+from the scaffold) were drawn per breakpoint as a background.
+
+TE density in each window $W$:
+
+$$d_W = \frac{\displaystyle\sum_{i \in W} \text{overlap}(TE_i, W)}{|W|}$$
+
+A two-sided Wilcoxon signed-rank test (scipy.stats.wilcoxon) compared matched
+breakpoint vs. random TE densities (one observation per breakpoint, paired).
+Per-superfamily enrichment: same Wilcoxon test restricted to superfamilies with
+≥ 10 windows containing ≥ 1 bp of that superfamily; BH-corrected FDR 5 %.
+
+#### 13.8 TE burst — WGD age correlation
+
+WGD ages in Mya were estimated from the modal Ks of the **anchor-pair** GMM peak
+component (§13.5), converted using a per-lineage synonymous substitution rate:
+
+$$t_{\text{WGD}} = \frac{\mu_k^{\text{anchor}}}{2 \times r_{\text{syn}}}$$
+
+where $r_{\text{syn}}$ (substitutions per site per year) was derived from the
+time-calibrated divergence of the node connecting the WGD lineage to its closest
+non-WGD sister in the ML species tree, using the fossil-constrained nodes of the
+companion study.
+
+For each WGD-positive species, the TE burst age was summarised as the KDE mode of
+the per-copy Kimura K distribution (§6.2) for each superfamily, using
+`scipy.stats.gaussian_kde` with Scott's bandwidth.  Spearman's $\rho$ between
+$t_{\text{WGD}}$ and the TE burst KDE mode was computed per superfamily across all
+WGD-positive species; BH-corrected FDR 5 % across superfamilies.
+
+#### 13.9 Normalised gene duplication rates per phylogenetic node
+
+The normalised rate $R_n$ (§13.3) was plotted on the species tree as a heat-map
+column, using the same colour scale across all nodes.  For visualisation, ancestral
+node rates were projected onto the LG+C60+F+G4 ML species tree with ete3 v3.1.3
+(`NodeStyle` colouring, `TreeStyle` rectangular layout).  Duplication-peak nodes
+(Robust Z ≥ 1.5, §13.3) are highlighted with a filled circle; the size is
+proportional to $Z_n$.
 
 ---
 
