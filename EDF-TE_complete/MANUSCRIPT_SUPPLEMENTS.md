@@ -176,8 +176,9 @@ identified as follows.  On each scaffold of species i, the ordered sequence of o
 shared with species j was extracted.  For each consecutive pair of orthologs on the same
 scaffold of species i, we tested whether their corresponding orthologs in species j were
 also adjacent on the same scaffold, irrespective of gene orientation (to account for local
-inversions; Putnam *et al.*, 2007).  The count of such collinear pairs is $c_{ij}$; the
-total number of adjacent-ortholog slots across all scaffolds of species i is $N_{ij}$.
+inversions; Putnam *et al.*, 2007).  The count of such collinear pairs is noted
+as `observed_collinear_pairs`; the total number of adjacent-ortholog slots across
+all scaffolds of species i is `total_adjacent_slots`.
 
 #### 4.4 Null distribution and spurious synteny correction
 
@@ -185,7 +186,7 @@ To account for spurious gene-order conservation from random co-localisation, ran
 genomic positions were assigned to each gene using `bedtools shuffle` v2.24 (Quinlan &
 Hall, 2010) in 100 independent rounds per species, with scaffolds preserved as location
 constraints (`-chrom` flag).  Each replicate used a fixed per-replicate random seed.
-The mean over 100 replicates ($\bar{s}_{ij}$) was computed for each species pair.
+The mean over 100 replicates (the null expectation, `null_mean_collinear`) was computed for each species pair.
 
 #### 4.5 Corrected synteny ratio
 
@@ -512,14 +513,16 @@ bedtools intersect -wa -wb -sorted \
   -a <te_copies.bed> -b <cytosine_report.bed>
 ```
 
-For each TE copy, the methylation level was computed from covered CpG positions only:
+For each TE copy, the methylation level was computed from covered CpG positions only.
+For each CpG position within the copy with sequencing coverage ≥ 5×, the number of
+methylated calls (C) and unmethylated calls (U) was read from the Bismark cytosine
+report.  The per-copy methylation fraction is simply:
 
-$$m_i = \frac{\sum_{k \in i,\; \text{cov}_k \geq 5} C_k}{\sum_{k \in i,\; \text{cov}_k \geq 5} (C_k + U_k)}$$
+`m = sum of methylated calls / sum of (methylated + unmethylated calls)`
 
-where $C_k$ and $U_k$ are the methylated and unmethylated call counts at CpG position
-$k$ within copy $i$, and the sum runs over positions with coverage ≥ 5×.  Copies
-with fewer than 3 such covered CpGs were excluded.  A copy was classified as
-methylated if $m_i \geq 0.50$.
+where the sum runs only over positions with coverage ≥ 5×.  Copies with fewer than
+3 covered CpG positions were excluded.  A copy was classified as methylated if
+m ≥ 0.50.
 
 #### 9.3 5mC landscape by TE family and Kimura age
 
@@ -527,14 +530,14 @@ methylated if $m_i \geq 0.50$.
 coverage-weighted mean per family per age bin, extending the approach of Chiapello *et al.*
 to additional Mucoromycota species
 (`TE_dynamics/20_chiapello_extension/`; Fig. 3B = `F4_wm_by_family_age.pdf`).  Spearman's
-rank correlation between $m_i$ and $K_i$ (per copy) was computed per species.  A separate
+rank correlation between the per-copy methylation fraction (m) and K2P divergence (K) was computed per species.  A separate
 analysis for dark-mycelium conditions is shown in Fig. S5B
 (`TE_dynamics/12_te_age_5mc/plots/01_wm_by_age_class.pdf`).
 
 #### 9.4 Gene proximity and expression effects
 
 The distance from each gene to the nearest full-length TE insertion was computed and
-stratified by methylation quartile (Q1–Q4 of per-copy $m_i$; Fig. 3C:
+stratified by methylation quartile (Q1–Q4 of the per-copy methylation fraction m; Fig. 3C:
 `TE_dynamics/31_meth_bins_gene_expr/gene_dist_from_TE_edge_FL.pdf`).  Adjacent-gene
 expression (RNA-seq RPKM; see Section 10.4) per methylation quartile is shown in
 Fig. 3D (top panels: *Phycomyces blakesleeanus*;
@@ -599,10 +602,14 @@ bedgraph files for both the treatment and control channels.
 
 #### 10.3 Per-TE-copy H3K9me3 enrichment
 
-H3K9me3 enrichment per TE copy was computed as the mean bedgraph signal over the copy
-BED coordinates, normalised to RPKM:
+H3K9me3 enrichment per TE copy was computed as the mean bedgraph signal over the
+copy coordinates, normalised to RPKM.  RPKM (reads per kilobase per million mapped
+reads) standardises read depth for both library size and feature length:
 
-$$\text{RPKM}_i = \frac{\text{reads in copy } i \times 10^9}{\text{copy length (bp)} \times \text{total uniquely mapped reads}}$$
+`RPKM = (reads overlapping copy × 10⁹) / (copy length in bp × total uniquely mapped reads)`
+
+This allows direct comparison of enrichment levels across copies of different
+lengths and between samples with different sequencing depths.
 
 Per-species per-modification enrichment analyses are shown in Fig. S5C
 (`TE_dynamics/36b_enrichment/`), and the top-6 most enriched families by H3K9me3 or
@@ -765,13 +772,12 @@ bowtie -v 2 -M 1 --best --strata -p 8 \
 
 `-v 2` permits at most 2 mismatches; `-M 1` reports one randomly chosen alignment
 for reads mapping to multiple locations (multimappers), setting the `XM` tag; `--best
---strata` ensures the alignment reported is among the best-scoring ones.  Reads
-per million (RPM) per TE family:
+--strata` ensures the alignment reported is among the best-scoring ones.  Reads per
+million (RPM) per TE family were computed as: the number of reads mapped to that
+family divided by the total number of mapped reads (including multimappers), multiplied
+by 10⁶.
 
-$$\text{RPM}_j = \frac{N_j}{N_{\text{total mapped}}} \times 10^6$$
-
-where $N_j$ is the count of aligned reads mapped to family $j$ and $N_{\text{total mapped}}$
-is the total count of reads with at least one alignment (including multimappers).
+`RPM = (reads mapped to family / total mapped reads) × 1,000,000`
 
 Spearman's rank correlation between per-family RPM and mean H3K9me3 RPKM (over all
 copies of that family) was computed per species
@@ -983,32 +989,32 @@ the column `Species Tree Node` indicating the node on the ML species tree (Secti
 at which the duplication was mapped.
 
 Duplication rates per species-tree node were computed as normalised counts
-(`scripts/compute_paper_like_duplication_rates.py`):
+(`scripts/compute_paper_like_duplication_rates.py`).  For each node n in the tree,
+the rate R_n is the number of duplication events mapped to that node (from
+`Duplications.tsv`) divided by the number of eligible orthogroups for that node:
 
-$$R_n = \frac{D_n}{T_n}$$
+`R_n = duplication events at node n / eligible orthogroups at node n`
 
-where $D_n$ is the count of duplication events mapped to node $n$ in
-`Duplications.tsv`, and $T_n$ is the number of **eligible orthogroups** for node
-$n$ — defined as orthogroups in which species from **both** descending clades of
-node $n$ are represented, after excluding orthogroups where any single species
-contributes > 5 copies (the `--max-species-copies 5` filter, which removes
-lineage-specific gene family expansions that would otherwise inflate node-specific
-duplication counts).
+Eligible orthogroups are those in which species from both descending clades of the
+node are represented, excluding any orthogroup where a single species contributes more
+than 5 copies (the `--max-species-copies 5` filter, which removes lineage-specific
+gene family expansions that would otherwise inflate node-specific duplication counts).
 
-Species-tree nodes at which the normalised rate $R_n$ was classified as an outlier
+Species-tree nodes at which the normalised rate R_n was classified as an outlier
 (Robust Z-score ≥ 1.5) relative to all nodes of the same type (terminal or
 internal) were tagged as **duplication-peak nodes** (`scripts/detect_duplication_peaks.py`).
-The Robust Z-score was computed as:
+The Robust Z-score is a median-based measure of how many "typical deviations" a value
+lies from the median of the distribution, computed as:
 
-$$Z_n = \frac{0.6745\,(R_n - \tilde{R})}{\text{MAD}(R)}$$
+`Z = 0.6745 × (value − median) / MAD`
 
-where $\tilde{R}$ is the median of all per-node rates across the species tree, and
-$\text{MAD}(R) = \text{median}(|R_n - \tilde{R}|)$.  The constant 0.6745 rescales
-MAD to be consistent with the standard deviation under a Gaussian distribution.
-Per-species signals were summarised as: `deep_peak_nodes` (count of internal
-tree nodes at depth ≥ 2 from the tip classified as duplication-peak), and
-`recent_peak_nodes` (terminal/depth-1 nodes classified as duplication-peak), and
-`max_peak_z` (maximum $Z_n$ over all nodes of that species).
+where MAD is the median absolute deviation (MAD = median of |R_n − median(R)|) across
+all nodes of the same type, and the constant 0.6745 rescales MAD to be equivalent to
+the standard deviation under a normal distribution.  Per-species signals were summarised
+as: `deep_peak_nodes` (count of internal tree nodes at depth ≥ 2 from the tip classified
+as duplication-peak), `recent_peak_nodes` (terminal/depth-1 nodes classified as
+duplication-peak), and `max_peak_z` (maximum Robust Z-score over all nodes of that
+species).
 
 To complement the node-level analysis, a **triplet topology test** was applied to
 each orthogroup containing gene copies from at least one focal species and two
@@ -1039,19 +1045,19 @@ gm = GaussianMixture(
 ).fit(Ks_values.reshape(-1, 1))
 ```
 
-The number of components $k$ was varied from 1 to 5.  Model selection used the
-Bayesian Information Criterion:
+The number of components k was varied from 1 to 5.  Model selection used the
+Bayesian Information Criterion (BIC), which penalises model complexity to avoid
+overfitting:
 
-$$\text{BIC}(k) = k \ln n - 2 \ln \hat{L}$$
+`BIC(k) = k × ln(n) − 2 × ln(maximum likelihood)`
 
-where $n$ is the number of Ks data points and $\hat{L}$ is the maximum likelihood.
-The $k$ minimising BIC was selected.  A GMM component was reported as a candidate
-WGD Ks peak if its mixture weight $w_k \geq 0.10$ AND its mean
-$\mu_k \in [0.05,\, 3.0]$, thereby excluding near-zero components (gene
-conversion / very recent duplicates) and saturated components above the reliable
-estimation range.  The event timing was classified as `ancient_deep` if all
-WGD-peak components had $\mu_k > 0.50$, `recent_terminal` if $\mu_k \leq 0.50$,
-or `mixed_deep_and_recent` if both conditions occurred in different components.
+where n is the number of Ks data points.  The k minimising BIC was selected.  A GMM component was reported as a candidate WGD Ks peak if its mixture weight
+(proportion of data points assigned to it) was ≥ 0.10 AND its mean Ks fell within
+[0.05, 3.0], thereby excluding near-zero components (gene conversion / very recent
+duplicates) and saturated components above the reliable estimation range.  The event
+timing was classified as `ancient_deep` if all WGD-peak components had a mean Ks
+> 0.50, `recent_terminal` if the mean Ks was ≤ 0.50, or `mixed_deep_and_recent` if
+both conditions occurred in different components.
 
 #### 14.5 Collinearity analysis — wgd v2 `syn` and multiplicons
 
@@ -1080,13 +1086,12 @@ and orientation.  The output files comprise:
 
 Per-species synteny statistics were aggregated as `n_multiplicons`,
 `n_anchorpoints`, and `n_segments` (`scripts/summarize_synteny_outputs.py`).
-The synteny evidence score was defined as the maximum of the multiplicon and
-segment Robust Z-scores over the 131-species distribution:
+The synteny evidence score for each species was defined as the larger of the two
+Robust Z-scores (described in §14.3) computed for that species’ multiplicon count
+and segment count, respectively, across the 131-species distribution:
 
-$$S_i = \max\!\left(Z_{M,i},\; Z_{S,i}\right)$$
+`S = max(Robust Z-score of multiplicon count, Robust Z-score of segment count)`
 
-where $Z_{M,i}$ and $Z_{S,i}$ are computed by the same MAD-based Robust Z-score
-formula (§13.3) applied to `n_multiplicons` and `n_segments`, respectively.
 A species was considered to have **synteny evidence** if `syn_completed = 1` AND
 `n_multiplicons > 0`.
 
@@ -1103,15 +1108,15 @@ streams (`scripts/classify_wgd_evidence.py`; `scripts/integrate_wgd_evidence_pap
 
 | Classification | Criterion |
 |---|---|
-| **Strong WGD** | $R_n \geq 0.30$ (duplication signal) AND synteny completed AND $n_\text{multiplicons} > 0$ |
-| **Uncertain — duplication only** | $R_n \geq 0.30$ AND ($n_\text{multiplicons} = 0$ OR `syn_completed = 0`) |
-| **Weak / ancient WGD** | $R_n < 0.30$ AND $n_\text{multiplicons} > 0$ AND `syn_completed = 1` |
-| **No WGD** | $R_n < 0.30$ AND ($n_\text{multiplicons} = 0$ OR `syn_completed = 0`) |
+| **Strong WGD** | duplication rate R >= 0.30 AND synteny completed AND n_multiplicons > 0 |
+| **Uncertain — duplication only** | duplication rate R >= 0.30 AND (n_multiplicons = 0 OR syn_completed = 0) |
+| **Weak / ancient WGD** | duplication rate R < 0.30 AND n_multiplicons > 0 AND syn_completed = 1 |
+| **No WGD** | duplication rate R < 0.30 AND (n_multiplicons = 0 OR syn_completed = 0) |
 
-The duplication rate threshold $R_n \geq 0.30$ was calibrated against 12 fungal
+The duplication rate threshold of 0.30 was calibrated against 12 fungal
 species with previously published WGD evidence (*Saccharomyces cerevisiae*, the
 Rhizopus microsporus complex, *Phytophthora infestans*, etc.); all 12 scored
-$R_n > 0.40$ in our normalised OrthoFinder analysis.  Species with
+R > 0.40 in our normalised OrthoFinder analysis.  Species with
 `event_timing = mixed_deep_and_recent` (§13.4) were flagged for manual review,
 as this pattern can arise from two independent rounds of duplication or from
 allopolyploidy followed by diploidisation.
@@ -1128,9 +1133,10 @@ genomic position.  Each breakpoint midpoint was expanded by ±5,000 bp.  One hun
 randomly sampled windows of the same length distribution (sampling with replacement
 from the scaffold) were drawn per breakpoint as a background.
 
-TE density in each window $W$:
+TE density in each window W was computed as the total number of base pairs covered
+by TE annotations within the window, divided by the window length:
 
-$$d_W = \frac{\displaystyle\sum_{i \in W} \text{overlap}(TE_i, W)}{|W|}$$
+`TE density = total TE bp in window / window length in bp`
 
 A two-sided Wilcoxon signed-rank test (scipy.stats.wilcoxon) compared matched
 breakpoint vs. random TE densities (one observation per breakpoint, paired).
@@ -1140,29 +1146,29 @@ Per-superfamily enrichment: same Wilcoxon test restricted to superfamilies with
 #### 14.8 TE burst — WGD age correlation
 
 WGD ages in Mya were estimated from the modal Ks of the **anchor-pair** GMM peak
-component (§13.5), converted using a per-lineage synonymous substitution rate:
+component (§13.5), converted using a per-lineage synonymous substitution rate.  The
+conversion follows the standard molecular clock formula:
 
-$$t_{\text{WGD}} = \frac{\mu_k^{\text{anchor}}}{2 \times r_{\text{syn}}}$$
+`WGD age (Myr) = anchor Ks peak / (2 × synonymous substitution rate per site per year)`
 
-where $r_{\text{syn}}$ (substitutions per site per year) was derived from the
-time-calibrated divergence of the node connecting the WGD lineage to its closest
-non-WGD sister in the ML species tree, using the fossil-constrained nodes of the
-companion study.
+The per-lineage synonymous substitution rate was derived from the time-calibrated
+divergence of the node connecting the WGD lineage to its closest non-WGD sister in
+the ML species tree, using the fossil-constrained nodes of the companion study.
 
 For each WGD-positive species, the TE burst age was summarised as the KDE mode of
 the per-copy Kimura K distribution (§6.2) for each superfamily, using
-`scipy.stats.gaussian_kde` with Scott's bandwidth.  Spearman's $\rho$ between
-$t_{\text{WGD}}$ and the TE burst KDE mode was computed per superfamily across all
-WGD-positive species; BH-corrected FDR 5 % across superfamilies.
+`scipy.stats.gaussian_kde` with Scott's bandwidth.  Spearman's rank correlation between WGD age (in Mya) and the TE burst KDE mode
+was computed per superfamily across all WGD-positive species; BH-corrected FDR 5 %
+across superfamilies.
 
 #### 14.9 Normalised gene duplication rates per phylogenetic node
 
-The normalised rate $R_n$ (§13.3) was plotted on the species tree as a heat-map
-column, using the same colour scale across all nodes.  For visualisation, ancestral
-node rates were projected onto the LG+G4 ML species tree with ete3 v3.1.3
-(`NodeStyle` colouring, `TreeStyle` rectangular layout).  Duplication-peak nodes
-(Robust Z ≥ 1.5, §13.3) are highlighted with a filled circle; the size is
-proportional to $Z_n$.
+The normalised duplication rate per node (Section 14.3) was plotted on the species
+tree as a heat-map column, using the same colour scale across all nodes.  For
+visualisation, ancestral node rates were projected onto the LG+G4 ML species tree
+with ete3 v3.1.3 (`NodeStyle` colouring, `TreeStyle` rectangular layout).
+Duplication-peak nodes (Robust Z ≥ 1.5, Section 14.3) are highlighted with a filled
+circle; circle size is proportional to the Robust Z-score.
 
 ---
 
@@ -1188,44 +1194,51 @@ A TE family was flagged as an HTT candidate if at least one cross-species hit
 - E-value ≤ 10⁻⁵
 
 **Phylogenetic anomaly score**: For each BLASTN hit pair (species A, species B,
-TE family F), the anomaly score was:
+TE family F), the anomaly score measures how much more similar the TE sequences
+are than would be expected given the evolutionary distance between the two host
+species:
 
-$$a = d_{\text{expected}} - d_{\text{observed}}$$
+`anomaly score = expected host divergence − observed TE divergence`
 
-where $d_{\text{expected}}$ is the species-tree patristic distance (from the
-LG+G4 ML tree, in expected substitutions per site) between A and B, and
-$d_{\text{observed}} = 1 - p_{\text{ident}}/100$.  HTT events were retained if
-$a \geq 0.10$ (i.e. the TE copies are at least 10 % more similar than expected
-from neutral host-genome divergence).
+The expected host divergence is the patristic distance between species A and B on
+the LG+G4 ML species tree (in expected substitutions per site), which represents
+how divergent sequences from these two species should be if they evolved neutrally
+since their common ancestor.  The observed TE divergence is `1 − (percent identity / 100)`,
+taken directly from the BLASTN alignment.  A positive anomaly score means the TE
+copies are more similar than expected from neutral host-genome divergence; an anomaly
+score ≥ 0.10 was required for HTT candidate retention.
 
 #### 15.2 HTT dating
 
 For each confirmed HTT event, the transfer date was estimated as the median
 synonymous Ks among all orthologue pairs between the donor and recipient species
 at the relevant OrthoFinder orthogroup, computed with yn00 (PAML v4.10.10) as in
-Section 14.1.  Ks was converted to Mya using the per-lineage $r_{\text{syn}}$
-from Section 14.4.
+Section 14.1.  Ks was converted to Mya using the per-lineage synonymous substitution
+rate (r_syn) from Section 14.4.
 
 #### 15.3 Flanking sequence locus conservation
 
 For each HTT candidate TE locus, 10,000 bp of flanking sequence on each side was
 extracted.  Both flanks were queried against the proteome and genome of the putative
 donor species via BLASTN (≥ 60 % identity, ≥ 50 bp alignment length, E ≤ 10⁻⁵,
-`-task blastn-short`):
+`-task blastn-short`).  A flanking conservation score was computed as the total
+aligned length of all BLASTN hits summed across both flanks, divided by the total
+flank length (20,000 bp):
 
-$$f_{\text{cons}} = \frac{\sum_{\text{hits}} \text{alignment\_length}_{\text{hit}}}{\text{total flank length (bp)}}$$
+`flanking_conservation = total BLASTN-aligned bp in flanks / 20,000`
 
-Loci were classified as:
-- **Conserved**: $f_{\text{cons}} \geq 0.30$
-- **Partial**: $0.10 \leq f_{\text{cons}} < 0.30$
-- **Non-conserved**: $f_{\text{cons}} < 0.10$
+This gives a value between 0 and 1 representing the fraction of flanking sequence
+with detectable homology in the putative donor.  Loci were classified as:
+- **Conserved**: flanking conservation ≥ 0.30
+- **Partial**: flanking conservation ≥ 0.10 and < 0.30
+- **Non-conserved**: flanking conservation < 0.10
 
 #### 15.4 HTT event counting — Dollo parsimony
 
 HTT events were counted under a Dollo parsimony model (an element can be gained only
 once, losses are free) using the ete3 v3.1.3 `TreeNode.get_descendant_evol_events()`
 framework.  The full candidate set comprised 223 BLASTN-flagged TE family × clade-pair
-combinations.  After applying the anomaly-score filter ($a \geq 0.10$) and the
+combinations.  After applying the anomaly-score filter (score ≥ 0.10) and the
 locus-conservation classification (≥ partial), the parsimony-minimum number of
 independent transfer events across the species tree was **11**.
 
@@ -1236,8 +1249,8 @@ independent transfer events across the species tree was **11**.
 All statistical tests were two-tailed.  Multiple comparisons were corrected by the
 Benjamini–Hochberg (BH) procedure at FDR ≤ 5 % whenever ≥ 5 hypotheses were tested
 simultaneously (scipy.stats.false_discovery_control(method='bh')).  Effect sizes
-are reported as: Spearman $\rho$ or Pearson $r$ (correlations), odds ratio with
-95 % Wilson confidence intervals (Fisher's exact), and rank-biserial correlation $r$
+are reported as: Spearman rho or Pearson r (correlations), odds ratio with
+95 % Wilson confidence intervals (Fisher's exact), and rank-biserial correlation r
 (Wilcoxon / Mann–Whitney tests).
 
 Unless otherwise stated, all analyses were implemented in Python 3.11.3 with the
@@ -1312,12 +1325,12 @@ proximity significance (−log p vs. random genes in the same genome); y-axis =
 gene copies embedded in TEs [log(n + 1)].  Top-right quadrant: domains
 statistically over-represented near TEs AND with TE-embedded copies; labels show
 domain name and TE class (colour).
-Source data: Fig2EF_proximity.
+Source data: Fig2E_proximity_scatter.
 
 **(F)** TE subfamily in symmetric flanks (41 domains) — panel C of the same file
 (Section 13.4).  Bubble chart: rows = TE superfamilies; columns = host-domain
 families; bubble size ∝ % of flanking TE copies; colour = TE class.
-Source data: Fig2EF_proximity.
+Source data: Fig2F_proximity_flanks.
 
 **(G)** Sex locus (MAT) analysis — panels A and C of
 `MAT_locus/figures/sex_locus_figure.pdf`.
@@ -1529,14 +1542,15 @@ described below.
 | Fig1A_tree | Fig. 1A | Species tree tip metadata | species, clade, clade_colour, bootstrap_support |
 | Fig1B_pangenome | Fig. 1B | Pangenome accumulation curve data | group, n_genomes, n_core, n_shell, n_unique, n_pangenome, mean, sd, permutation_id |
 | Fig1C_genomic_features | Fig. 1C | Per-species genomic feature metrics | species, clade, Pct_Exonic, Pct_Intronic, Avg_Introns_Multiexon, Total_Genes |
-| Fig1D_synteny | Fig. 1D | Corrected synteny ratio per species pair | species_A, species_B, clade, c_ij, s_ij_mean, N_ij, score_ij, r_ij |
+| Fig1D_synteny | Fig. 1D | Corrected synteny ratio per species pair | species_A, species_B, clade, observed_collinear_pairs, null_mean_collinear, total_adjacent_slots, corrected_score, normalised_score |
 | Fig2A_te_content | Fig. 2A | TE class composition + Shannon + RI per species | species, clade, total_te_pct, DNA_pct, LTR_pct, LINE_pct, shannon_H, RI |
 | Fig2B_pca_composition | Fig. 2B | PCA of TE class composition | species, clade, PC1, PC2, var_explained_PC1, var_explained_PC2 |
 | Fig2C_kimura_ri | Fig. 2C | Recency Index per species | species, clade, RI, n_te_bp_total |
 | Fig2D_kimura_summary | Fig. 2D | Mean Kimura divergence per superfamily × species | species, clade, superfamily, mean_kimura, n_copies |
 | Fig2E_proximity_scatter | Fig. 2E | Gene-TE proximity scatter (41 domains) | domain_id, domain_name, te_class, log_proximity_p, log_copies_in_te |
 | Fig2F_proximity_flanks | Fig. 2F | TE subfamily in symmetric flanks (41 domains) | domain_id, te_superfamily, te_class, pct_flanking_te, n_flanking_copies |
-| Fig2GH_sex_locus | Fig. 2G–H | Sex locus architecture and synteny data | species, clade, mat_locus_genes, te_superfamily, te_pct |
+| Fig2G_sex_locus | Fig. 2G | Sex locus MAT architecture and TE composition | species, clade, mat_locus_genes, te_superfamily, te_pct |
+| Fig2H_sex_locus_synteny | Fig. 2H | Sex locus microsynteny between Fenestella and Phycomyces | gene_A, gene_B, species_A, species_B, link_colour, scaffold_A, scaffold_B |
 | Fig3A_dnmt | Fig. 3A | DNMT copy number per species + TE content | species, clade, DNMT1_n, DIM2_n, RID_DNMT2_n, total_te_pct |
 | Fig3B_5mc_family_age | Fig. 3B | Weighted-mean 5mC per TE family × age bin | species, family, age_bin_kimura, wm_5mC, n_copies_covered |
 | Fig3C_gene_dist_5mc | Fig. 3C | Gene–TE distance by methylation quartile | species, distance_bp, quartile, n_copies |
