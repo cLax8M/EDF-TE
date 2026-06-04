@@ -66,19 +66,18 @@ simultaneously satisfied all four criteria:
 2. **Copy number** ≤ 2 copies in every sampled genome (to limit hidden paralogy).
 3. **Post-trimming alignment length** ≥ 60 amino acid columns.
 4. **Parsimony-informative sites** (PIS, counted from trimmed alignment) ≥ 25.
-5. **Relative composition variability** (RCV; PhyKIT v2.0) ≤ 0.5.  RCV quantifies
-   compositional heterogeneity across the taxa in an alignment:
-
-   $$\text{RCV} = \frac{1}{4L}\sum_{i=1}^{20}|f_i - \bar{f}|$$
-
-   where $f_i$ is the mean frequency of amino acid $i$ across all taxa in the alignment,
-   $\bar{f} = 1/20$ is the expected frequency under composition uniformity, and $L$ is
-   the trimmed alignment length in columns.  A low RCV (< 0.5) indicates that amino acid
-   frequencies are relatively consistent across sampled lineages, a prerequisite for
-   reliable phylogenetic inference under standard substitution models; high RCV suggests
-   that some taxa have strongly divergent amino acid composition, which can lead to
-   long-branch attraction artefacts by grouping unrelated taxa with convergently biased
-   sequences.  The threshold of 0.5 is standard in the field (Mullen *et al.*, 2023).
+5. **Relative composition variability** (RCV; PhyKIT v2.0) ≤ 0.5.  RCV measures whether
+   the amino acid composition of the alignment is consistent across all sampled taxa.
+   For each of the 20 amino acids, the mean frequency across all taxa in the alignment
+   is computed; RCV is then the average absolute deviation of those frequencies from a
+   perfectly uniform distribution (i.e. 1/20 = 5 % per amino acid), normalised by the
+   alignment length: `RCV = mean(|f_i − 0.05|) / (4 × alignment_length)`.  A low RCV
+   (< 0.5) indicates that amino acid frequencies are relatively consistent across
+   sampled lineages, a prerequisite for reliable phylogenetic inference under standard
+   substitution models; high RCV suggests that some taxa have strongly divergent amino
+   acid composition, which can lead to long-branch attraction artefacts by grouping
+   unrelated taxa with convergently biased sequences.  The threshold of 0.5 is standard
+   in the field (Mullen *et al.*, 2023).
 
 Per-gene trees under LG+G4 (IQ-TREE 2.3.6, `--fast` mode) were used to detect
 long-branch outlier sequences: any taxon whose terminal branch length exceeded the
@@ -191,31 +190,31 @@ The mean over 100 replicates ($\bar{s}_{ij}$) was computed for each species pair
 #### 4.5 Corrected synteny ratio
 
 The raw synteny score measures gene-order conservation above random expectation,
-normalised by the total number of testable adjacent-gene slots:
+normalised by the total number of testable adjacent-gene slots.  For each species pair
+(i, j), the score is computed as:
 
-$$\text{score}_{ij} = \frac{c_{ij} - \bar{s}_{ij}}{N_{ij}}$$
+`score = (observed collinear pairs − null mean) / total adjacent-gene slots`
 
-where $c_{ij}$ is the observed number of collinear ortholog pairs between species $i$ and
-$j$, $\bar{s}_{ij}$ is the mean number of collinear pairs across 100 randomisation rounds
-(the null expectation), and $N_{ij}$ is the total number of adjacent-ortholog slots in
-species $i$.  Subtracting the null mean $\bar{s}_{ij}$ corrects for the baseline level of
-gene-order conservation attributable to chance co-localisation of unlinked orthologs;
-dividing by $N_{ij}$ normalises for scaffold fragmentation, ensuring that species with
-highly fragmented assemblies (where fewer adjacent-gene pairs can be tested) are
-not artificially penalised.  Negative values — indicating observed synteny below random
-expectation, which can occur by chance in fragmented assemblies — were set to zero.
+that is, the number of collinear ortholog pairs found in the real data minus the average
+number found in 100 randomised replicates, divided by the total number of consecutive
+ortholog pairs tested in species i.  Subtracting the null mean corrects for the baseline
+level of gene-order conservation attributable to chance co-localisation of unlinked
+orthologs; dividing by the total slots normalises for scaffold fragmentation, ensuring
+that species with highly fragmented assemblies (where fewer adjacent-gene pairs can be
+tested) are not artificially penalised.  Negative values — which can arise by chance in
+highly fragmented assemblies — were set to zero.
 
-Scores were then normalised to the interval [0, 1] within each clade using the maximum
-observed score in that clade as the reference:
+Scores were then rescaled to the range [0, 1] within each clade by dividing by the
+maximum observed score in that clade:
 
-$$r_{ij} = \frac{\text{score}_{ij}}{\max_{kl}(\text{score}_{kl})}$$
+`normalised score = score / maximum score in the clade`
 
-This within-clade normalisation is necessary because absolute synteny scores scale with
-divergence time: closely related species will always show higher absolute scores than
-distantly related ones regardless of true synteny retention.  A value of $r_{ij} = 1.0$
-indicates the most synteny-conserved pair within the clade; a value near 0 indicates
-gene-order conservation indistinguishable from the random background.  Normalisation
-was performed independently per clade and results should not be compared across clades.
+This within-clade rescaling is necessary because absolute synteny scores scale with
+divergence time: closely related species will always show higher scores than distantly
+related ones regardless of true synteny retention.  A normalised score of 1.0 indicates
+the most synteny-conserved pair within the clade; a value near 0 indicates gene-order
+conservation indistinguishable from the random background.  Scores from different clades
+should not be compared directly.
 A per-species ranking by distance-corrected synteny ratio is shown in Fig. S1B.  Per-clade
 boxplots of synteny ratios are shown in Fig. S1C
 (`Synteny_guide_corrected/figures/synteny_ratio_by_clade_box.pdf`).
@@ -316,57 +315,64 @@ retained in all other comparative analyses.
 #### 6.1 K2P distance computation
 
 RepeatMasker produces a per-copy pairwise alignment in the `.align` output file.
-Each alignment block records the substitution matrix decomposed into matches (m),
-transitions (i) and transversions (v) accumulated between the inserted copy and the
-consensus sequence.  The Kimura two-parameter (K2P) model corrects for multiple
-substitutions at the same site and for the higher rate of transitions relative to
-transversions, which is important for TE divergence estimation because TE consensus
-sequences are typically AT-rich and accumulate C→T/G→A transitions rapidly.  For every
-annotated copy we derived the K2P nucleotide substitution distance:
+Each alignment block records, for the region of the genome occupied by a given TE copy,
+how many nucleotide positions match the consensus sequence, how many differ by a
+transition (purine–purine or pyrimidine–pyrimidine substitution: A↔G or C↔T), and how
+many differ by a transversion (purine–pyrimidine substitution: A/G ↔ C/T).  These
+counts are used to compute the Kimura two-parameter (K2P) divergence, which corrects for
+the fact that (i) the same position may have been substituted more than once since the TE
+inserted (multiple-hit correction), and (ii) transitions occur at a higher rate than
+transversions and would otherwise be under-counted.  The K2P formula is:
 
-$$K = -\frac{1}{2}\ln(1 - 2p - q) - \frac{1}{4}\ln(1 - 2q)$$
+`K = −0.5 × ln(1 − 2p − q) − 0.25 × ln(1 − 2q)`
 
-where $p = i / L_{\text{aln}}$ is the transition fraction, $q = v / L_{\text{aln}}$
-is the transversion fraction, and $L_{\text{aln}}$ is the number of aligned sites
-after stripping terminal gaps from both the copy and the consensus.  Because $K$
-grows monotonically with the number of substitutions since insertion, it serves as
-a molecular clock proxy for TE insertion age: a copy with $K = 0$ was inserted very
-recently (zero divergence from its consensus), whereas a copy with $K > 0.3$ has
-accumulated so many substitutions that its ancestral boundaries are difficult to
-recover reliably.
+where p is the proportion of sites differing by a transition (transitions / aligned sites)
+and q is the proportion of sites differing by a transversion (transversions / aligned
+sites).  Aligned sites are counted after trimming terminal gaps from both the copy and the
+consensus.  Because K increases monotonically with divergence time since insertion, it
+serves as a molecular clock proxy for TE insertion age: a copy with K = 0 was inserted
+very recently (zero divergence from its consensus), whereas a copy with K > 0.3 has
+accumulated so many substitutions that its ancestral boundaries are difficult to recover
+reliably.
 
 CpG-context transitions (C→T or G→A at CpG dinucleotides) accumulate approximately
-ten-fold faster than non-CpG transitions in vertebrates and are also elevated in
-fungi; these were corrected using the CpG-adjusted substitution matrix reported by
-RepeatMasker (columns "CpG" in the `.align` statistics line), preventing CpG-rich
-elements from being artificially aged.  Copies with fewer than 10 aligned sites after
-gap-stripping were discarded as unreliable.
+ten-fold faster than non-CpG transitions and would artificially inflate the divergence of
+CpG-rich elements; these were corrected using the CpG-adjusted substitution counts
+reported separately by RepeatMasker in the `.align` file.  Copies with fewer than 10
+aligned sites after gap-stripping were discarded as unreliable.
 
 (`section2_te_landscape/04_kimura_divergence.py`)
 
 #### 6.2 Divergence landscape histograms
 
 Kimura divergence landscapes were constructed as stacked histograms per species.
-Each histogram spans K ∈ [0, 1] with a bin width of 0.005 (200 bins).  The y-value
-per bin is the sum of genomic footprints (end − start in bp from the `.filteredRepeats.bed`)
-of all TE copies whose K falls within that bin, stacked by TE class using the
-canonical Wicker et al. class hierarchy (Class I LTR, Class I non-LTR, Class II,
-Helitrons, Unknown).
+Each histogram spans K values from 0 to 1, divided into bins of width 0.005 (200 bins
+total).  For each bin, the y-axis shows the total genomic space occupied by TE copies
+whose K2P distance falls within that bin, expressed in base pairs.  The genomic space
+occupied by a copy (hereafter "copy length") is simply the length of the annotated
+region on the chromosome in base pairs, taken directly from the start and end coordinates
+in the `.filteredRepeats.bed` output file.  Stacking by TE class follows the canonical
+Wicker et al. (2007) class hierarchy: Class I LTR, Class I non-LTR, Class II DNA
+transposons, Helitrons, and Unknown.
 
 #### 6.3 Recency Index
 
-The Recency Index for species $s$ quantifies the proportion of the TE landscape
-that has been recently active:
+The Recency Index (RI) for a given species is the proportion of the total TE content
+(measured in base pairs) that consists of recently inserted copies.  Specifically, for
+each species we summed the lengths of all annotated TE copies with K2P distance < 0.10,
+and divided that sum by the total length of all annotated TE copies in the genome:
 
-$$RI_s = \frac{\displaystyle\sum_{\substack{i \in s,\; K_i < 0.10}} bp_i}{\displaystyle\sum_{i \in s} bp_i}$$
+`RI = (total bp from copies with K < 0.10) / (total TE bp in the genome)`
 
-where $i$ indexes all annotated TE copies in species $s$, $bp_i$ is the copy
-genomic footprint, and $K_i$ is its K2P distance.  The threshold $K < 0.10$ was
-chosen empirically to capture copies that have accumulated fewer than ~10 % of the
-substitutions expected under neutral decay since the origin of the host lineage.
-At typical fungal synonymous substitution rates (~2 × 10⁻⁹ per site per year), a
-K value of 0.10 corresponds roughly to insertion events occurring within the last
-~50 Myr of the analysed divergence time window.
+A copy’s length is defined as the number of base pairs it occupies on the chromosome,
+read from the start and end coordinates in the RepeatMasker annotation file.  The RI
+therefore ranges from 0 (no recently inserted copies) to 1 (all TE content is recent).
+
+The threshold K < 0.10 was chosen empirically to capture copies that have accumulated
+fewer than ~10 % of the substitutions expected under neutral decay.  At typical fungal
+synonymous substitution rates (~2 × 10⁻⁹ per site per year), a K value of 0.10
+corresponds roughly to insertion events occurring within the last ~50 Myr of the
+analysed divergence time window.
 
 ---
 
@@ -389,29 +395,29 @@ clades (Fig. S2B), and Shannon diversity boxplots (Fig. S2C) are in
 
 #### 7.2 Shannon diversity and Recency Index
 
-Shannon diversity (H′, bits) and Pielou's evenness (J) per species were computed from the
-EarlGrey `familyLevelCount.txt` file, treating each TE superfamily as a species-analogue
-in the ecological sense and the bp contributed by each superfamily as its abundance.
-Structural RNA and simple repeat classes were excluded before computation
+To measure how diverse the TE repertoire of each species is, we treated each TE
+superfamily as analogous to a biological species in a community ecology framework,
+and the number of base pairs contributed by that superfamily to the genome as its
+"abundance".  Structural RNA and simple repeat classes were excluded before computation
 (Simple_repeat, Low_complexity, Satellite, rRNA, tRNA, snRNA, scRNA, sno, srpRNA).
+All values were computed from the EarlGrey `familyLevelCount.txt` output file.
 
-The Shannon entropy $H'$ measures the overall complexity of the TE community in a genome:
+The **Shannon diversity index** (H′, bits) measures the overall complexity of the TE
+community.  It is calculated as: for each superfamily, multiply its proportional
+contribution to total TE base pairs by the log₂ of that proportion, sum these products
+across all superfamilies, and negate the result: `H′ = −Σ p_j × log₂(p_j)`.  A value
+of H′ = 0 bits means the entire TE content is dominated by a single superfamily;
+higher values indicate a more diverse community.  The theoretical maximum,
+log₂(number of superfamilies), is reached when all superfamilies contribute equally.
 
-$$H_i = -\sum_j p_{ij} \log_2 p_{ij}$$
-
-where $p_{ij}$ is the proportional genomic footprint (bp fraction) of TE superfamily $j$
-in species $i$.  A value of $H' = 0$ bits means the entire TE content is dominated by
-a single superfamily; the theoretical maximum $H'_{\max} = \log_2 n_i$ is reached when
-all $n_i$ detected superfamilies contribute equally.  Because $H'$ increases with $n_i$
-by construction, Pielou's evenness $J$ is computed as the normalised form:
-
-$$J_i = \frac{H_i}{\log_2 n_i}$$
-
-$J$ ranges from 0 (one superfamily dominates) to 1 (perfectly equal representation),
-making it comparable across species with different numbers of detected superfamilies.  A
-high $H'$ combined with a low $J$ indicates a diverse but uneven community — many
-superfamilies present but a handful responsible for most of the genomic mass — whereas
-high $H'$ and high $J$ indicate a genuinely diverse and balanced TE repertoire
+Because H′ increases automatically with the number of detected superfamilies, we also
+computed **Pielou’s evenness** (J), which rescales H′ to the range [0, 1] by dividing
+by this theoretical maximum: `J = H′ / log₂(number of superfamilies)`.  A value of
+J = 1 means all superfamilies contribute equally to the TE landscape; a value near 0
+means a handful of superfamilies account for virtually all the TE content.  A high H′
+combined with a low J indicates a diverse but uneven community — many superfamilies
+present but a handful responsible for most of the genomic mass — whereas high H′ and
+high J indicate a genuinely diverse and balanced TE repertoire
 (`Section2_TElandscape/scripts/B01_shannon_diversity.py`).
 
 The Recency Index (RI) was computed from EarlGrey Kimura divergence data as the fraction
