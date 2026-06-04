@@ -726,8 +726,95 @@ windows was compared to background (non-TE, non-genic) windows.  Delta occupancy
 columns: species, superfamily, mean_te_occupancy, background_occupancy, delta_occupancy,
 n_insertions).  Cross-species and cross-clade summaries are shown in Fig. S4B
 (`Section2_TElandscape/supervised_chromatin/invivo_landscape/figS_nuclpred_chromatin_withpoints.pdf`).
-Comparison with in-vivo chromatin metrics from four experimentally characterised
-species is shown in Fig. S4A
+
+#### 11.4 In vivo nucleosome and chromatin accessibility analysis
+
+To validate the computational nuclPred predictions with native chromatin data, in
+vivo chromatin accessibility and nucleosome positioning were measured in four
+species using three experimental approaches.
+
+**MNase-seq (***Rhizopus microsporus* **ATCC11559, legacy dataset).**  A
+previously generated MNase-seq WIG track for *R. microsporus* (MU_Rhimi59) was
+used directly as input; raw reads were not reprocessed.  This dataset provides
+the single-nucleosome resolution occupancy signal used as an in vivo reference
+throughout the study.
+
+**MNase-seq and MAINE-seq (***Neurospora crassa*** OR74A and ***Botrytis cinerea***
+B05.10).**  Raw reads were downloaded from the ENA (N. crassa SRR13067301,
+SRR13067302, SRR13067303; B. cinerea SRR13224644, SRR13224647, SRR13224648).
+For each species, replicate FASTQ files were quality-trimmed with BBDuk v38.87:
+
+```
+bbduk.sh in1=<R1.fq.gz> in2=<R2.fq.gz> \
+  out1=<trimmed_R1.fq.gz> out2=<trimmed_R2.fq.gz> \
+  ref=adapters ktrim=r k=23 mink=11 hdist=1 tpe tbo qtrim=rl trimq=15 minlen=50
+```
+
+Trimmed reads were aligned to the respective reference genomes with Bowtie v1.3.1
+(single-end mode, using the mono-nucleosomal insert range):
+
+```
+bowtie -v 2 -m 1 --best --strata -p 16 \
+  -x <genome_index> -q <trimmed.fq> -S <mapped.sam>
+```
+
+`-m 1` retains only uniquely mapping reads to avoid multi-mapping artefacts in
+repetitive regions.  BAMs were coordinate-sorted with samtools v1.17 and PCR
+duplicates were removed with Picard MarkDuplicates v3.1 (`REMOVE_DUPLICATES=true`).
+Per-replicate duplicate-removed BAMs were merged into a single pooled BAM per
+species with `samtools merge`.
+
+DANPOS v3 (`dpos` subcommand) was applied to the pooled BAM to call
+per-nucleosome dyad positions and compute per-nucleosome metrics:
+
+```
+python danpos.py dpos <pooled_dedup.bam> -m 1 -a 1 -o <danpos_dir>
+```
+
+`-m 1` enables background model subtraction; `-a 1` enables DANPOS
+normalisation.  The output `positions.xls` file provides, for every called
+nucleosome, the smoothed dyad position (`smt_pos`), peak height (`smt_value`,
+proportional to nucleosome sharpness/occupancy), and fuzziness score
+(standard deviation of the read-end distribution around the dyad, in bp;
+lower values indicate better-positioned nucleosomes).  A smoothed WIG occupancy
+file (`*.smooth.wig`) was also produced for regional analyses.
+
+**ATAC-seq (***Microbotryum eburneum***).**  Three paired-end ATAC-seq replicates
+(SRR28069093, SRR28069094, SRR28069106) were downloaded from the SRA.  Reads were
+quality-trimmed with fastp v0.23.4 (`--detect_adapter_for_pe`), aligned to the
+*M. eburneum* genome with Bowtie2 v2.5.2 (`--no-mixed --no-discordant --maxins 2000`),
+and duplicates were removed with samtools markdup.  A per-base accessibility WIG
+was computed with DANPOS `dpos` (same parameters as above); note that ATAC-seq
+signal represents chromatin accessibility (high signal = open chromatin), which
+is directionally opposite to MNase occupancy.
+
+**Per-nucleosome feature analysis (***N. crassa*** and ***B. cinerea*** only).**
+Three features were extracted from the DANPOS `positions.xls` for each called
+nucleosome and compared across three genomic contexts — TE loci (dyad inside an
+EarlGrey-annotated TE interval), protein-coding gene bodies (dyad inside a GFF
+`gene` feature), and intergenic regions (neither):
+(i) `fuzziness_score` — positional SD of the read population (lower = more precisely
+positioned);
+(ii) `smt_value` — smoothed peak height (higher = more nucleosome-like, better
+protected);
+(iii) `nrl_bp` — distance to the next dyad on the same chromosome (nucleosome
+repeat length proxy; filtered to 100–400 bp).
+Group comparisons used two-sided Mann–Whitney U tests (BH-corrected FDR 5 %).
+
+**Regional TE-density analysis (all four in vivo datasets).**  The genome was
+partitioned into 5 kb and 10 kb non-overlapping windows.  Windows were ranked
+into four TE-density quartiles (Q1 = TE-poorest, Q4 = TE-richest) based on
+fractional overlap with EarlGrey annotations.  Four features were computed from
+the smoothed WIG per window: mean signal (`mean_sig`), coefficient of variation
+(`cv`), autocorrelation peak value in the 140–240 bp lag range (`ac_val`, nucleosome
+phasing strength), and the lag of that peak (`ac_lag`, nucleosome repeat length).
+For ATAC-seq data, `mean_sig` was sign-inverted before comparison with MNase
+occupancy to align the directionality.  Quartile comparisons used Kruskal–Wallis
+tests followed by pairwise Mann–Whitney U tests (BH-corrected FDR 5 %)
+(`Section2_TElandscape/scripts/invivo_nucleosome_landscape.py`,
+`mnase_invivo_nucleosomes_at_te.py`, `danpos_fuzziness_at_te.py`).
+
+The combined in vivo dataset (MNase, MAINE and ATAC) is shown in Fig. S4A
 (`Section2_TElandscape/supervised_chromatin/invivo_landscape/figF2_invivo_multimetric_withpoints.pdf`).
 
 ---
@@ -840,18 +927,54 @@ one Pfam domain not belonging to the TE domain set
 (`Cooption/scripts/06_filter_true_cooption.py`).
 
 A total of **51,799 co-opted genes** were identified across 238 species (17 clades).
-[*NOTE — confirm total and per-clade breakdown numbers with the RESULTS_SUMMARY.txt*]
 
 #### 13.2 ChimeraTE chimeric transcript detection
 
-Chimeric gene–TE transcripts were detected with ChimeraTE (Mode 1, RNA-based)
+Chimeric gene–TE transcripts were detected with ChimeraTE v1.2 (Mode 1, genome-guided
+RNA-based mode; Oliveira *et al.*, 2022; https://github.com/OliveiraDS-hub/ChimeraTE)
+across 24 species spanning 15 clades
 (`Cooption/scripts/chimte_bedtools_perrep.py`, `chimte_merge.py`,
 `prep_chimeraTE_data.py`).
 
-[*NOTE — ChimeraTE analysis was running for MU species at time of writing; EDF
-species pending.  Please fill in: (1) exact ChimeraTE version and command-line
-parameters used; (2) RNA-seq datasets and STAR alignment parameters; (3) final
-number of species analysed and chimeric junctions detected.*]
+**RNA-seq datasets.**  Three species were analysed using previously published
+RNA-seq data from the MycoMobilome project (MU_Mucci3, MU_Rhimi59, MU_Phybl4;
+read format: interleaved FASTQ, PE).  For the remaining 21 EDF species, publicly
+available RNA-seq runs were downloaded from the SRA and processed in paired-end
+mode (species listed in Source Data; see §17 for accession IDs):
+AP_Amoprot, BL_Blabri1, BS_Basme92, CH_Batde5, CH_Batsa1, CH_Pirfi3,
+EN_Entmai1, EN_Zoorad1, GL_Geopyr1, GL_Rhicl1, GL_RhiirA4,
+KX_Coemoj1, KX_Kicala1, MI_Enccu1, MI_Sprlo1, MI_Vavcu1,
+MO_Disdec1, MO_Morel2, NU_Fontalba, ZO_Pipcy3.
+
+**Alignment.**  Reads were aligned to each species' reference genome (repeat-soft-masked)
+with STAR v2.7.11b in 2-pass mode:
+
+```
+STAR --runMode alignReads \
+  --genomeDir <STAR_index> \
+  --readFilesIn <R1.fastq.gz> <R2.fastq.gz> \
+  --readFilesCommand zcat \
+  --outSAMtype BAM SortedByCoordinate \
+  --outFilterMultimapNmax 100 \
+  --winAnchorMultimapNmax 200 \
+  --twopassMode Basic \
+  --runThreadN 16
+```
+
+`--outFilterMultimapNmax 100` and `--winAnchorMultimapNmax 200` allow reads to
+multi-map to repetitive TE copies, which is necessary to detect chimeric transcripts
+spanning gene–TE junctions; the more permissive alignment policy is standard for
+ChimeraTE.
+
+**Chimeric junction detection.**  Per-replicate chimeric read counts were computed
+with a BEDtools-based reimplementation (`chimte_bedtools_perrep.py`) that reproduces
+the ChimeraTE Mode 1 logic: reads spanning the boundary between a gene body and an
+overlapping or adjacent TE copy are classified by junction type (TE-initiated,
+TE-terminated, or TE-internal).  Results were merged across replicates per species
+(`chimte_merge.py`).  TE classes excluded from ChimeraTE analysis: `Simple_repeat`,
+`Satellite`, `Low_complexity`, `rRNA`, `snRNA`, `srpRNA`, `tRNA`, `scRNA`, `RNA`,
+`ARTEFACT`.  A chimeric event was reported if ≥ 2 independent reads supported the
+junction in ≥ 1 replicate.
 
 #### 13.3 TF binding site enrichment in TE sequences
 
@@ -861,52 +984,122 @@ ATCC11559 were analysed in two complementary ways
 `TF_TE_analysis/scripts/03_fimo_motif_enrichment.py`).
 
 **Peak–TE overlap (script 01).**  DAP-seq peak BED files (filtered at
-q-value ≥ 10⁻² ) were intersected with the EarlGrey TE annotation of *R. microsporus*
-ATCC11559 using bedtools intersect.  For each TF, the fraction of peaks overlapping
+q-value ≥ 10⁻²) were intersected with the EarlGrey TE annotation of *R. microsporus*
+ATCC11559 using `bedtools intersect`.  For each TF, the fraction of peaks overlapping
 any TE copy was computed; enrichment relative to the genomic TE coverage was tested
-with a two-sided Fisher's exact test.  Significance was assessed after
-Benjamini–Hochberg correction (FDR 5 %).
+with a two-sided Fisher's exact test (BH-FDR 5 %).
 
 **FIMO motif enrichment in TE sequences (script 03).**  FIMO v5.5.5 was run for
 each of the 58 TF motif files (MEME format; `data/TFsDAP/motifs/`) against the TE
-sequences of each TE class, and separately against 3× size-matched genomic
-shuffled sequences generated with `bedtools shuffle`.  The p-value threshold for
-FIMO hit reporting was 1 × 10⁻⁴.  Enrichment in TE sequences relative to the
-shuffled background was tested with a two-sided Fisher's exact test on the
-2 × 2 contingency table (TE sequences with ≥ 1 FIMO hit vs. background sequences
-with ≥ 1 FIMO hit); p-values were corrected across all TF × TE class combinations
-using the Benjamini–Hochberg procedure (FDR 5 %).
+sequences of each TE class, and separately against 3× size-matched genomic shuffled
+sequences generated with `bedtools shuffle`.  The p-value threshold for FIMO hit
+reporting was 1 × 10⁻⁴.  Enrichment in TE sequences relative to the shuffled
+background was tested with a two-sided Fisher's exact test on the 2 × 2 contingency
+table (TE sequences with ≥ 1 FIMO hit vs. background sequences with ≥ 1 FIMO hit);
+p-values were corrected across all TF × TE class combinations using the
+Benjamini–Hochberg procedure (FDR 5 %).
 
-A focused cross-species analysis of the HMGb motif (HMGb_1228) enrichment in
-LINE/I-Jockey elements was subsequently performed for all available species with
-annotated Jockey elements
-(`TF_TE_analysis/scripts/run_hmgb3_jockey_cross_species.sh`).
+The strongest enrichment identified in the *R. microsporus* analysis was for the
+HMGb3 transcription factor (DAP-seq motif HMGb_1228) in LINE/I-Jockey elements
+(100 % of Jockey copies contained at least one FIMO hit; OR = 18.3, BH-q < 10⁻⁴).
+To determine whether this association is phylogenetically widespread, the FIMO
+cross-species analysis was extended to all 236 EDF species with EarlGrey TE
+annotations and available HMGb3 motif data
+(`TF_TE_analysis/scripts/run_fimo_cross_species.sh`; SLURM array, one job per species).
+The fraction of LINE/I-Jockey copies carrying an HMGb3 binding site was computed per
+species and plotted sorted by clade (`TF_TE_analysis/scripts/plot_hmgb3_cross_species.py`;
+`plot_hmgb3_clade_heatmap.py`).  Species without annotated I-Jockey elements were
+excluded from the cross-species panel.
 
-[*NOTE — please confirm: (1) TF family names and DAP-seq experiment details;
-(2) the specific HMGb result statistics (p-value, OR, n species);
-(3) whether any cross-species analyses beyond R. microsporus were finalised.*]
+**Gypsy LTR × bHLH_Myc motif association.**  A second focused enrichment was the
+association between LTR/Gypsy elements and helix–loop–helix transcription factors
+(HLH_Myc class; motifs HLH_Myc14, HLH_Myc5, HLH_Myc15).  To determine whether the
+HLH_Myc binding affinity co-segregates with a specific Gypsy clade, the RT domain
+sequences of all 103 Gypsy elements in *R. microsporus* ATCC11559 carrying an
+identifiable RT-domain were extracted and aligned.  A maximum-likelihood tree was
+inferred with IQ-TREE2 (`-m MFP -bb 1000 --redo`).  Gypsy elements were classified
+into RT-domain clades using TEsorter v1.4.7 with the REXdb/Metazoa database
+(`--db REXdb -p 4`), which resolved four clades: Chlamyvir, Reina, chromo-outgroup,
+and non-chromo-outgroup.  Each leaf of the RT tree was annotated with: (i) its TEsorter
+clade assignment; (ii) presence of DAP-seq peak overlap for each of the three bHLH_Myc
+TFs; and (iii) the number of FIMO hits per HLH_Myc motif
+(`TF_TE_analysis/scripts/plot_gypsy_tree_hlh_heatmap.py`).  The Chlamyvir clade was
+specifically enriched for HLH_Myc binding sites (Fisher's exact, BH-FDR 5 %).
+
+**GremLINE1 retrotransposon distribution.**  GremLINE1 is a LINE/I clade element
+originally characterised as a centromeric repeat in Mucoromycota (Navarro-Mendoza
+et al. 2019).  To determine its distribution across the EDF dataset, the published
+GremLINE1 consensus sequence was used as a BLASTN query against the EarlGrey
+consensus TE library of each Mucoromycota and Blastocladiomycota species
+(`TF_TE_analysis/scripts/05b_identify_gremlins.sh`; BLAST parameters: ≥ 30 %
+identity, ≥ 50 % query coverage, E ≤ 10⁻⁵, following Navarro-Mendoza et al. 2019).
+For each species, the TE family names of all libraries with BLAST hits were
+extracted (`gremlin_families_per_species.tsv`).  Downstream FIMO motif enrichment
+and DAP-seq overlap analyses were performed on the identified GremLINE1-related
+families using the same HMGb3 motif pipeline described above
+(`TF_TE_analysis/scripts/05c_identify_gremlins_tblastn.sh` cross-validates with
+tBLASTn on translated copies; `05d_identify_gremlins_genome.sh` scans genome copies
+directly for flanking gene conservation).
 
 #### 13.4 TE–host domain fusion proteins
 
 Proteins carrying at least one TE-derived Pfam domain AND at least one host-function
-domain in the same gene were identified across all 238 species
-(`Cooption/scripts/02_classify_proteins.py`, architecture class `TE_host_fusion`).
-This includes proteins in which a TE catalytic component (te_core) has been
-co-recruited with a cellular function domain (non_te), and proteins where DUF
-(Domain of Unknown Function) domains co-occur with TE domains
-(`Cooption/scripts/13_duf_te_fusions.py`).
+domain in the **same polypeptide** were identified across all 238 species using the
+InterProScan output (IPR.tab files; one per species, generated with InterProScan 5.65
+as described in §13.1).  The screen was implemented in
+`Cooption/scripts/02_classify_proteins.py` (architecture class `TE_host_fusion`) and
+`Cooption/scripts/13_duf_te_fusions.py`.
 
-For DUF × TE pairs, enrichment relative to the null expectation (marginal DUF
-frequency × marginal TE frequency) was tested with Fisher's exact test (BH-FDR 5 %).
-The most prevalent co-occurring pairs recovered include DUF4217 (PF13959) with
-Helitron and Helicase TE domains (present in 156 species), and DUF1605 (PF07717)
+**ORF-level fusion detection.**  For each protein, all Pfam domain accessions were
+collected from the IPR.tab file (stripping version suffixes).  A protein was classified
+as a TE–host fusion if its Pfam set contained at least one member of the TE-machinery
+domain set (e.g. PF00078 RVT_1, PF00665 rve integrase, PF01609 DDE transposase,
+PF10551 MULE, PF02994 L1 transposase — see full list in §13.1) AND at least one
+domain not belonging to the TE domain set.  A symmetric check was performed for the
+fusion screen (`Cooption/scripts/02_fusion_screen.py`): for each candidate expansion
+domain (target Pfam), every protein carrying that domain was tested for co-occurrence
+with any TE-domain in the same IPR.tab entry.  This approach provides direct protein-level
+evidence (single ORF) that the host functional domain has been incorporated into a TE
+coding frame or vice versa, independently of co-expression or proximity.
+
+**DUF × TE enrichment analysis.**  Domain of Unknown Function (DUF) accessions
+co-occurring with TE domains in the same protein were compiled across all species.
+For each DUF × TE domain pair, enrichment relative to the null expectation (marginal
+DUF frequency × marginal TE frequency across all proteins) was tested with Fisher's
+exact test (BH-FDR 5 %).  The most prevalent co-occurring pairs include DUF4217
+(PF13959) with Helitron/Helicase TE domains (156 species) and DUF1605 (PF07717)
 with Helitron elements (44 species).
 
-The four fusion types highlighted are: (i) FLYWCH domain (PF02178) × TE RT domains,
-expanded in Neocallimastigomycota; (ii) CotH kinase (PF05630) × TE domains, present
-across multiple clades; (iii) NACHT domain (PF05729) × TE RT/integrase domains; and
-(iv) DAM N6-adenine methyltransferase (PF05869) fused within DIRS-class retrotransposons,
-found in several basal fungal clades (§13.5).
+**Highlighted fusion types.**
+
+*(i) FLYWCH domain (PF04500) × TE RT domains* — the FLYWCH domain is a zinc-finger
+motif present in C2H2 transcription factors.  FLYWCH × reverse-transcriptase fusions
+were identified in **Neocallimastigomycota** (clade NE) where copy numbers of
+FLYWCH-domain proteins are markedly elevated relative to all other clades
+(Mann–Whitney, BH-q < 0.05, fold ≥ 5; `expansion_analysis/01_copynumber_screen.py`).
+Protein-level fusions carrying both PF04500 and a TE RT domain (PF00078/PF07727) in
+a single ORF were detected in multiple NE species, suggesting domestication of TE
+reverse-transcriptase activity into a chimeric FLYWCH effector.
+
+*(ii) CotH kinase (PF08757) × TE domains* — CotH is the eponymous kinase of
+coat-protein biosynthesis in Mucorales.  CotH genes are expanded in the CH clade
+(Chytridiomycota) and show protein-level fusions with TE integrase (PF00665) and
+transposase (PF01609) domains in multiple species.  The CotH expansion was the first
+domain identified in the original seven-domain targeted screen
+(`expansion_analysis/00b_discover_expansions.py`).
+
+*(iii) NACHT NTPase domain (PF05729) × TE RT/integrase domains* — NACHT domains
+are central to innate-immunity NLR proteins in animals.  In fungi, NACHT × TE
+fusions were found scattered across multiple clades, with the TE partner being
+predominantly LINE-class RT domains, suggesting the NACHT signalling cassette may
+recruit TE-derived reverse transcriptase or endonuclease activity as a sensing
+component.
+
+*(iv) DAM N6-adenine methyltransferase (PF05869/IPR003356) fused within DIRS LTR
+retrotransposons* — described in §13.5 below.  Briefly, 14 out of 15 confirmed
+DAM-TE fusions involve DIRS-class elements, and the DAM domain is found within the
+TE ORF rather than as an independently transcribed host gene, indicating that the
+DIRS element has captured and carries the methyltransferase as a functional passenger.
 
 #### 13.5 DAM methyltransferases embedded within TEs
 
@@ -937,6 +1130,66 @@ DAM-TE and AMT1 across 320 species yielded **OR = 5.19, p = 0.028** (two-tailed)
 Fifteen species harboured confirmed DAM-TE genes: 14 associated with DIRS-class LTR
 retrotransposons, 1 with a Gypsy LTR element.
 
+#### 13.6 Clade-specific domain expansion and TE proximity analysis
+
+To identify protein domains that have undergone clade-specific expansions in
+parallel with TE activity, a systematic scan of all Pfam domains was performed
+across the 238-species IPR.tab dataset
+(`TE_analysis/expansion_analysis/00b_discover_expansions.py`).
+
+**Discovery of expanded domains.**  For each Pfam domain with ≥ 5 total protein
+hits across the dataset, two expansion tests were applied:
+*(i) Cladal expansion*: a one-sided Mann–Whitney U test comparing per-species copy
+counts in each of the 18 clades against all other species (rest-of-dataset).  A
+domain was flagged as cladally expanded if the corrected p-value was < 10⁻⁴ (BH-FDR
+across all clade × domain combinations), the fold-change over the rest-of-dataset
+median was ≥ 5, and the within-clade median copy count was ≥ 3 copies per species.
+*(ii) Species-specific expansion*: a domain was flagged if any single species
+harboured ≥ 10 copies while the median of all other species was ≤ 1 copy.
+Ubiquitous housekeeping domains (present in > 40 % of species with ≥ 2 copies),
+ribosomal and proteasomal components, and the seven previously characterised
+domains (CotH, TLD, Pil1, SUR7, SMG1_N, Trypsin, LPMO_10) were excluded.
+
+The final expansion candidate table (`results/clade_expansion_table.tsv`) was
+produced by `expansion_analysis/10_clade_expansion_table.py`, ranking candidates by
+fold-change relative to the rest of the dataset.
+
+**Per-species copy number screen.**  For each of the 31 domains entering the master
+expansion table, per-species raw copy counts and protein IDs were extracted from all
+238 IPR.tab files
+(`expansion_analysis/01_copynumber_screen.py`; output: `results/expansion_copynumber.tsv`
+and `results/expansion_proteins.tsv`).
+
+**TE proximity analysis (Fig. 2E, Supp. 3C).**  For each species with at least one
+gene carrying an expanded domain, the distance from every such gene to the nearest
+annotated TE copy was computed with `bedtools closest -d`
+(`expansion_analysis/04_proximity_analysis.py`).  Three comparisons were made per
+domain × species: (A) expanded-clade species vs. non-expanded-clade species for the
+same domain; (B) target-domain genes vs. a size-matched random background of other
+genes in the same genome; (C) high-copy species (top 25 % by domain copy number)
+vs. low-copy species (bottom 75 %) within the expanded clade.  Background genes
+were sampled without replacement from the same genome.  Two-sided Mann–Whitney U
+tests with BH correction at FDR 5 % were applied; results are summarised in
+`results/proximity/proximity_summary.tsv`.
+
+**TE correlation screen (Fig. 2F, Supp. 3D).**  For each expanded domain × clade
+pair, the Spearman rank correlation between per-species domain copy number and
+genome TE content (% genome covered by EarlGrey-annotated TEs) was computed across
+all species in the dataset (`expansion_analysis/09_te_correlation_screen.py`).
+Significant positive correlations (ρ > 0, BH-FDR 5 %) indicate that species with
+more TE content tend to carry more copies of the expanded domain, consistent with
+TE-mediated amplification.  The scatter plot and per-domain summary are shown in
+Fig. 2E and Supplementary Fig. 3C–D.
+
+**Structural analysis of pack-element candidates (Supp. 3C–D).**  For domains with
+significant TE proximity and TE-content correlation, structural analysis was
+performed to identify putative pack-TE (Pack-MULE or Pack-HELITRON) elements —
+non-autonomous TEs that carry host gene fragments
+(`expansion_analysis/06_structural_analysis.py`).  Each candidate gene was
+intersected with the EarlGrey annotation; genes fully embedded within a TE interval
+(overlap ≥ 90 % of gene length by a single TE copy) and shorter than the median
+domain-family gene length by > 40 % were flagged as putative pack elements.
+
 ---
 
 ### 14. Whole-genome duplication analysis
@@ -945,10 +1198,10 @@ WGD detection combined three independent lines of evidence computed for each
 species: (i) synonymous substitution rate (Ks) distributions of the whole-paranome
 (wgd v2), (ii) collinearity-based detection of multiplicons (wgd v2 `syn` module),
 and (iii) gene tree reconciliation–based duplication counts from OrthoFinder.
-Evidence was integrated into a four-category classification, described in §13.6.
+Evidence was integrated into a four-category classification, described in §14.6.
 All WGD analyses were restricted to the 131 species with ≤ 50 assembly scaffolds
 (to ensure reliable collinearity detection); the full 320-species dataset was used
-only for the OrthoFinder reconciliation arm (§13.3).
+only for the OrthoFinder reconciliation arm (§14.3).
 
 #### 14.1 Genome pre-filtering for collinearity-based analyses
 
@@ -1004,7 +1257,7 @@ Ks = 0 (CDS identity; likely assembly duplicates), Ks > 3.0 (saturation under an
 standard substitution rate), Ka/Ks > 5 (non-synonymous model convergence failure),
 or the codon alignment contained fewer than 100 codons after gap removal.
 The resulting per-species paranome Ks distributions were used for GMM fitting
-(§13.4) and age-correlation analyses (§13.5).
+(§14.4) and age-correlation analyses (§14.5).
 
 #### 14.3 OrthoFinder gene tree reconciliation — duplication mapping
 
@@ -1056,7 +1309,7 @@ cross-validation signal for the duplication-peak calls.
 
 #### 14.4 GMM fitting and WGD peak detection in the paranome Ks
 
-The per-species paranome Ks distribution (from §13.2; maximum 5,000 randomly
+The per-species paranome Ks distribution (from §14.2; maximum 5,000 randomly
 sub-sampled pairs when more pairs existed, to reduce compute time while preserving
 distribution shape) was modelled with a Gaussian Mixture Model (GMM) using
 scikit-learn GaussianMixture:
@@ -1088,7 +1341,7 @@ both conditions occurred in different components.
 
 #### 14.5 Collinearity analysis — wgd v2 `syn` and multiplicons
 
-For the 131 filtered species (§13.1), intra-genomic collinearity was assessed using
+For the 131 filtered species (§14.1), intra-genomic collinearity was assessed using
 `wgd syn` (wgd v2):
 
 ```
@@ -1125,7 +1378,7 @@ A species was considered to have **synteny evidence** if `syn_completed = 1` AND
 The anchor-point Ks distribution (Ks values of anchor gene pairs within multiplicons)
 provides a more precise WGD age estimate than the full paranome, because it filters
 out background small-scale duplications.  The modal Ks of the anchor-Ks distribution,
-extracted as the GMM peak component (§13.4 applied to anchor pairs only), was used
+extracted as the GMM peak component (§14.4 applied to anchor pairs only), was used
 as the primary WGD age estimate.
 
 #### 14.6 Multi-evidence WGD classification
@@ -1144,14 +1397,14 @@ The duplication rate threshold of 0.30 was calibrated against 12 fungal
 species with previously published WGD evidence (*Saccharomyces cerevisiae*, the
 Rhizopus microsporus complex, *Phytophthora infestans*, etc.); all 12 scored
 R > 0.40 in our normalised OrthoFinder analysis.  Species with
-`event_timing = mixed_deep_and_recent` (§13.4) were flagged for manual review,
+`event_timing = mixed_deep_and_recent` (§14.4) were flagged for manual review,
 as this pattern can arise from two independent rounds of duplication or from
 allopolyploidy followed by diploidisation.
 
 #### 14.7 TE breakpoint enrichment at WGD synteny boundaries
 
 For each WGD-positive species (Strong WGD or Weak/ancient), the boundaries of
-intra-genomic collinear blocks (wgd v2 multiplicons, §13.5) were used to define
+intra-genomic collinear blocks (wgd v2 multiplicons, §14.5) were used to define
 breakpoint windows — i.e. the regions of the genome where multiplicon adjacency
 is interrupted.  Concretely, a breakpoint was defined as the chromosomal interval
 between the last anchor-point coordinate of one multiplicon and the first
@@ -1172,21 +1425,74 @@ Per-superfamily enrichment: same Wilcoxon test restricted to superfamilies with
 
 #### 14.8 TE burst — WGD age correlation
 
-WGD ages in Mya were estimated from the modal Ks of the **anchor-pair** GMM peak
-component (§13.5), converted using a per-lineage synonymous substitution rate.  The
-conversion follows the standard molecular clock formula:
+**WGD age estimation from anchor-Ks peaks and a time-calibrated molecular clock.**
+WGD ages in Mya were estimated from the modal Ks of the anchor-pair GMM peak
+component (§14.5), converted to absolute time using a synonymous substitution rate
+calibrated against the fossil-constrained timetree of Szánthó *et al.* (2025).
+The conversion follows the standard molecular clock formula:
 
-`WGD age (Myr) = anchor Ks peak / (2 × synonymous substitution rate per site per year)`
+`WGD age (Mya) = anchor_Ks_peak / (2 × r_syn)`
 
-The per-lineage synonymous substitution rate was derived from the time-calibrated
-divergence of the node connecting the WGD lineage to its closest non-WGD sister in
-the ML species tree, using the fossil-constrained nodes of the companion study.
+where `r_syn` is the synonymous substitution rate per site per year.
 
-For each WGD-positive species, the TE burst age was summarised as the KDE mode of
-the per-copy Kimura K distribution (§6.2) for each superfamily, using
-`scipy.stats.gaussian_kde` with Scott's bandwidth.  Spearman's rank correlation between WGD age (in Mya) and the TE burst KDE mode
+**Branch-specific rate calibration.**  For each WGD-positive lineage, `r_syn` was
+derived by matching the lineage to the nearest anchored node in the Szánthó *et al.*
+(2025) time-calibrated ultrametric chronogram (Supplementary Material, NEXUS tree).
+Node ages were extracted as cumulative branch lengths from each internal node to
+the tips; in an ultrametric tree all tips are at time 0, so each node's age equals
+the sum of branch lengths connecting it to any terminal.  The key calibration ages
+used are listed below (all in Ma):
+
+| Szánthó node | Fungal group | Age (Ma) |
+|---|---|---|
+| Sz_199 | Mucor s.s. crown | 100 |
+| Sz_198 | Mucor + Rhizopus | 143.9 |
+| Sz_197 | Crown Mucorineae (excl. Phycomyces) | 260.9 |
+| Sz_196 | Crown Mucorales | 283.5 |
+| Sz_195 | Broader Mucorales | 307.3 |
+| Sz_194 | Mucoromycotina (excl. Endogonales + Glomeromycota) | 514.0 |
+| Sz_212 | Glomeromycota crown | 471.7 |
+| Sz_217 | Mortierella crown | 74.5 |
+| Sz_141 | Crown Ascomycota | 839.7 |
+| Sz_184 | Saccharomycotina (Scer + Dbru) | 342.4 |
+| Sz_59  | Crown Basidiomycota | 790.1 |
+
+For each WGD lineage, the patristic distance between the WGD clade and its closest
+non-WGD sister clade in the IQ-TREE ML species tree was measured.  This patristic
+distance was then compared to the corresponding divergence time from the Szánthó
+chronogram (interpolating linearly between bracket nodes where a direct age
+assignment was not available, using branch-length-proportional interpolation).
+The per-lineage `r_syn` was then computed as:
+
+`r_syn = patristic_distance / (2 × node_age_Myr × 10⁶)`
+
+(the factor 10⁶ converts Myr to years).  For the Mucoromycota WGD nodes
+(WGD-1, WGD-2, WGD-3 mapped to OrthoFinder nodes N141, N153, N163), a global
+calibration of µ = 1.5 × 10⁻⁹ substitutions/site/year was used (calibrated by
+matching the WGD-1 Ks peak of 0.785 to the 261 Ma Szánthó age).  WGD-4 (node N172,
+Backusella; anchor Ks = 0.616) was NOT assigned an age via Ks because its
+topological placement within the WGD-3 clade makes a direct Ks-to-age conversion
+contradictory; instead, its age was estimated by branch-length interpolation between
+the nearest calibrated ancestor (N163, 104 Ma) and the species-tree tip, giving a
+rate-adjusted estimate of ~82 Ma (`WGD/scripts/figures/fig_gene_dup_rate_ma.py`).
+
+The resulting three confirmed Mucoromycota WGD ages are:
+WGD-1 ~261 Ma, WGD-2 ~157 Ma, WGD-3 ~104 Ma.
+
+**TE burst — WGD temporal correlation.**  For each WGD-positive species, the
+TE burst age was summarised as the kernel density estimation (KDE) mode of the
+per-copy Kimura divergence K distribution (§6.2) for each TE superfamily, using
+`scipy.stats.gaussian_kde` with Scott's bandwidth rule.  The KDE mode approximates
+the most recent period of elevated TE activity (lowest K = most recently active).
+The KDE mode was converted to Mya using the same per-lineage `r_syn`:
+
+`burst_age (Mya) = K_KDE_mode / (2 × r_syn × 10⁶)`
+
+Spearman's rank correlation between WGD age (Mya) and TE burst KDE mode (Mya)
 was computed per superfamily across all WGD-positive species; BH-corrected FDR 5 %
-across superfamilies.
+across superfamilies.  Superfamilies with ≥ 5 WGD-positive species passing the KDE
+estimation threshold (≥ 20 TE copies per species) were included.
+Results are shown in Fig. 5C.
 
 #### 14.9 Normalised gene duplication rates per phylogenetic node
 
@@ -1201,73 +1507,164 @@ circle; circle size is proportional to the Robust Z-score.
 
 ### 15. Horizontal transposon transfer (HTT)
 
-#### 15.1 HTT candidate identification
+Horizontal transposon transfer (HTT) detection followed a nine-step computational
+pipeline (`HTT/scripts/` and `legserv/.../HTT_hpc_scripts/`), closely inspired by
+the approach of Romeijn *et al.* (2025) for fungi.  Each step is described below
+in pipeline order.
 
-Per-clade TE consensus libraries (from Section 5.5, clustered at 95 % identity by
-MMseqs2 `--min-seq-id 0.95 -c 0.80 --cov-mode 0`) were constructed and used as
-queries in an all-vs.-all BLASTN search within each of the 18 clades:
+#### 15.1 Species phylogeny and evolutionary divergence calibration
+
+A reference phylogenetic tree for all 320 EDF species was inferred as described in
+Section 2 (LG+G4 model, 1000 UFBoot replicates; `HTT/scripts/01_phylo_tree.sh`).
+The tree was rooted on the outgroup (*Naegruberia gruberi*, clade HO).
+
+To calibrate evolutionary divergence between each pair of clades at the node level,
+the synonymous substitution rate (Ks) of core single-copy genes was computed for
+each internal node of the species tree.  For each node, single-copy OrthoFinder
+orthogroups (Section 2) common to both descendant sub-clades were used as the
+gene set — this replaces BUSCO-based selection and ensures coverage even for
+lineages where BUSCO databases are absent or incomplete.  For species lacking
+nucleotide CDS files in the BUSCO output, CDS sequences were extracted directly
+from the GFF + genome FASTA using the OrthoFinder protein assignments
+(`HTT/scripts/03a_extract_cds_for_ogs.py`, `03a_extract_cds_for_missing_busco.py`).
+
+For each orthogroup at a node, one representative CDS per descendant clade was
+selected by maximum sequence length (or randomly for ties).  The two CDS were
+aligned at the protein level with MAFFT v7.520 (`--auto`), then a codon alignment
+was built with PAL2NAL v14 (`-nogap`).  Ks values were estimated with the
+`kaks` function in seqinr (v4.2-36) in R (`HTT/scripts/05_ks_seqinr.R`).  The
+0.5th percentile of the Ks distribution per node was used as a **node Ks threshold**;
+node pairs with a threshold < 0.01 were collapsed (treated as a single taxonomic
+unit) to avoid false-positives from near-identical species
+(`HTT/scripts/02_div_times.sh`).
+
+#### 15.2 TE annotation and protein-domain classification
+
+TEs were annotated in all 320 genomes with EarlGrey as described in Section 5.
+For the HTT pipeline, TE copies < 300 bp were discarded
+(`HTT/scripts/04_te_annotation.sh`).  All retained TE sequences were extracted
+from genome FASTAs with BEDtools v2.31.1 `getfasta` and compiled into a combined
+FASTA (`HTT/scripts/05_prep_te_data.py`).
+
+To restrict HTT analysis to copies likely to encode functional TE proteins,
+TE-related protein domains were identified in each copy.  TE sequences were
+translated in all six frames with `transeq` (EMBOSS v6.6.0, `-frame 6`).
+Translated sequences were searched against:
+(i) 142 Conserved Domain Database (CDD) profiles with RPSTBLASTN
+(BLAST+ v2.12.0, `-evalue 0.001 -max_target_seqs 1`);
+(ii) 110 TE-related Pfam HMM profiles (same domain set as §13.1) with HMMER v3.4
+(`hmmsearch -E 0.001`).
+Only TE copies with at least one domain hit passing the e-value threshold were
+retained for the HTT analysis
+(`HTT/scripts/05_te_classification.sh`).
+
+#### 15.3 All-vs-all BLASTN and hit chaining
+
+Retained domain-containing TE sequences were searched against each other in an
+all-vs-all BLASTN (BLAST+ v2.12.0):
 
 ```
-blastn -query <clade_library.fa> -db <clade_genome_db> \
-  -perc_identity 85 -word_size 11 -evalue 1e-5 \
-  -outfmt '6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen' \
-  -num_threads 16
+blastn -dbsize 10000000000 -evalue 10 \
+  -max_target_seqs 100000 \
+  -perc_identity 75 \
+  -outfmt "6 qseqid sseqid pident length qstart qend sstart send bitscore"
 ```
 
-A TE family was flagged as an HTT candidate if at least one cross-species hit
-(query and subject from different species) satisfied:
-- nucleotide identity ≥ 85 %
-- alignment length ≥ 100 bp
-- E-value ≤ 10⁻⁵
+Cross-clade hits (i.e. query and subject from different clades) were retained if
+percent identity ≥ 75 %, alignment length ≥ 300 bp, and bitscore ≥ 200.
+Fragmented collinear hits between the same pair of TE sequences were chained into
+single extended alignments allowing a maximum gap and maximum overlap of 600 bp.
+Pairs were further filtered to require that the chained alignment covered ≥ 60 %
+of both the query and subject TE length (to exclude partial matches that could
+reflect conserved domain fragments).  This yielded **50,143 chained cross-clade
+hit pairs** as input to Ks estimation.
 
-**Phylogenetic anomaly score**: For each BLASTN hit pair (species A, species B,
-TE family F), the anomaly score measures how much more similar the TE sequences
-are than would be expected given the evolutionary distance between the two host
-species:
+#### 15.4 Ks-based HTT candidate selection
 
-`anomaly score = expected host divergence − observed TE divergence`
+For each chained hit pair, Ks was estimated using the same codon-alignment +
+seqinr pipeline as in §15.1, restricted to the aligned domain region.  Protein
+domains present in both TEs had to overlap precisely the same CDD/Pfam coordinate
+ranges on both sides of the alignment; no frameshift-introducing gaps were
+permitted.  A candidate HTT pair was retained if its estimated Ks was lower than
+the 0.5th-percentile Ks threshold of the most recent common ancestor (MRCA) node
+of the two species' clades (i.e. the TE copies are more similar than expected for
+any gene evolving neutrally since the two lineages diverged).  This yielded
+**223 HTT candidate pairs** spanning **20 clade pairs**
+(`HTT/scripts/06_htt_candidates.sh`).
 
-The expected host divergence is the patristic distance between species A and B on
-the LG+G4 ML species tree (in expected substitutions per site), which represents
-how divergent sequences from these two species should be if they evolved neutrally
-since their common ancestor.  The observed TE divergence is `1 − (percent identity / 100)`,
-taken directly from the BLASTN alignment.  A positive anomaly score means the TE
-copies are more similar than expected from neutral host-genome divergence; an anomaly
-score ≥ 0.10 was required for HTT candidate retention.
+#### 15.5 Flanking locus conservation — non-vertical transmission test
 
-#### 15.2 HTT dating
+For each HTT candidate pair, 10,000 bp of flanking sequence on each side of the
+TE insertion was extracted.  Flanks from the putative acceptor were aligned to the
+putative donor genome and proteome with MUMmer v3.1 (`nucmer`, mode `--mum`,
+minimum match 40 bp, minimum cluster 100 bp; `HTT/scripts/07_flankid.sh`).
+Alignments shorter than 200 bp were discarded.  For non-HTT control pairs, an
+equal number of same-family pairs from within the same clade were matched and
+subjected to the same flanking alignment analysis.
 
-For each confirmed HTT event, the transfer date was estimated as the median
-synonymous Ks among all orthologue pairs between the donor and recipient species
-at the relevant OrthoFinder orthogroup, computed with yn00 (PAML v4.10.10) as in
-Section 14.1.  Ks was converted to Mya using the per-lineage synonymous substitution
-rate (r_syn) from Section 14.4.
+A flanking conservation score for each pair was computed as the total aligned
+length across both flanks divided by 20,000 bp.  Pairs where the flanking
+conservation was exactly 0 % and TE identity was > 75 % — the strictest evidence
+for non-vertical transfer — were retained as the **high-confidence HTT set**
+(91 pairs; `htt_candidates_flank_0pct_teid_gt75.tsv`).
 
-#### 15.3 Flanking sequence locus conservation
+#### 15.6 Community detection — grouping into independent transfer events
 
-For each HTT candidate TE locus, 10,000 bp of flanking sequence on each side was
-extracted.  Both flanks were queried against the proteome and genome of the putative
-donor species via BLASTN (≥ 60 % identity, ≥ 50 bp alignment length, E ≤ 10⁻⁵,
-`-task blastn-short`).  A flanking conservation score was computed as the total
-aligned length of all BLASTN hits summed across both flanks, divided by the total
-flank length (20,000 bp):
+Because multiple HTT pairs within the same biological event inflate the candidate
+count, HTT pairs were clustered into independent transfer **communities** using
+the approach of Romeijn *et al.* (2025).
 
-`flanking_conservation = total BLASTN-aligned bp in flanks / 20,000`
+For each pair of clades sharing at least one HTT candidate, an intra-clade
+all-vs-all BLASTN was performed (`-dbsize 10,000,000,000 -evalue 10
+-max_target_seqs 600,000`) to obtain within-clade identity scores.  HTT pairs
+were represented as nodes in a graph; two nodes were connected by an edge if: (a)
+they involved the same TE copy, OR (b) the between-clade identity of the TE pair
+exceeded the within-clade identity of the same TE (i.e. the cross-species copy
+is more similar than copies within the same species, ruling out independent
+parallel evolution).  The Louvain community detection algorithm
+(`igraph` v0.11.8, `cluster_fast_greedy`) was applied to identify communities.
+Communities with inter-community edge density > 0.05 were merged to minimise
+false positives.  This yielded **20 HTT communities** across 20 clade pairs
+(`HTT/scripts/08_htt_clustering.sh`; `htt_pairs_with_community.tsv`).
 
-This gives a value between 0 and 1 representing the fraction of flanking sequence
-with detectable homology in the putative donor.  Loci were classified as:
-- **Conserved**: flanking conservation ≥ 0.30
-- **Partial**: flanking conservation ≥ 0.10 and < 0.30
-- **Non-conserved**: flanking conservation < 0.10
+#### 15.7 Minimal HTT events — Dollo parsimony on the species tree
 
-#### 15.4 HTT event counting — Dollo parsimony
+To account for the possibility that a single ancestral transfer produced multiple
+descendant lineages that each appear as independent transfers, a second-level
+network analysis was applied.  Communities were treated as nodes; communities
+sharing TE copies were connected.  Single-linkage clustering (networkX v2.5.1)
+identified clusters of related communities.  For each cluster, the species tree
+was pruned to include only the species and collapsed nodes present in that cluster
+(ete3 v3.1.3).  Per node of the pruned tree, the minimum number of independent
+transfers required to explain the observed pattern parsimoniously was counted:
+if multiple transfers from different clade pairs involved the same TE community,
+one event sufficed; if the same clade pair was involved in multiple independent
+communities, that exact count was recorded.  Summing across all nodes yielded a
+**minimum of 15 independent HTT events** across the EDF dataset
+(`HTT/scripts/09_minimal_htt_events.sh`; Fig. 6A).
 
-HTT events were counted under a Dollo parsimony model (an element can be gained only
-once, losses are free) using the ete3 v3.1.3 `TreeNode.get_descendant_evol_events()`
-framework.  The full candidate set comprised 223 BLASTN-flagged TE family × clade-pair
-combinations.  After applying the anomaly-score filter (score ≥ 0.10) and the
-locus-conservation classification (≥ partial), the parsimony-minimum number of
-independent transfer events across the species tree was **11**.
+**HTT node distribution.**  Of the 15 minimal events, the largest node
+(node_32) accounts for 6 events, followed by node_38 (3 events); the remaining
+7 events are distributed singly across 7 additional tree nodes.
+
+#### 15.8 TE type and clade enrichment
+
+For each HTT community, the TE superfamily classification of the involved elements
+was extracted from the `all_tes_info.tsv` table.  The 20 clade pairs involved span
+clades CH, MU, MO, AS, BL, BS, AP, EN, GL, HO, KX, NU, and ZO, with MO–MU being
+the most represented pair (involved in multiple communities).  Fisher's exact tests
+(BH-FDR 5 %) were used to assess enrichment of specific TE superfamilies and clade
+pairs relative to their expected frequencies under a null model of random pairing
+(`fig_htt_te_enrichment.py`).
+
+#### 15.9 HTT visualisation
+
+Chord diagrams illustrating the clade-pair network of HTT events were generated
+with the `circlize` R package v0.4.16 (`HTT/scripts/plot_htt_chord.R`,
+`plot_htt_chord_validated.R`).  Fig. 6 shows the validated high-confidence events;
+Supplementary Fig. S6 shows the full community set.  A locus-level synteny
+comparison for selected HTT pairs was generated with MUMmer + custom R plotting
+(`HTT/scripts/plot_htt_synteny.R`, `plot_htt_synteny_v2.R`).
 
 ---
 
@@ -1286,6 +1683,79 @@ following library versions: numpy 1.26.2, pandas 2.1.4, scipy 1.11.4, scikit-lea
 networkx 3.2.1.  R 4.4.0 was used for visualisation with ggplot2 4.0.0, ggtree 3.10,
 circlize 0.4.16, and ComplexHeatmap 2.18.0.  Network visualisation was performed with
 Cytoscape 3.10.2 with the yFiles Organic layout.
+
+---
+
+### 17. Published data accession IDs
+
+All publicly available datasets re-analysed in this study are listed below.
+Genome assemblies and gene annotations are provided in the supplementary genome
+catalogue (Source Data; §17 of Methods).
+
+#### 17.1 Chromatin and epigenomic datasets
+
+| Species | Strain/Assembly | Data type | Accession | Reference |
+|---|---|---|---|---|
+| *Rhizopus microsporus* | ATCC11559 | H3K9me3 ChIP-seq (IP + Input) | — (local; reads in `data/Extra/ChIPRMH3K9me3/`) | This study |
+| *Rhizopus microsporus* | ATCC11559 | MNase-seq | — (legacy WIG; `data/nucleosomes/Rhizopus_microsporus.wig`) | This study |
+| *Neurospora crassa* | OR74A | MNase-seq | SRR13067301, SRR13067302, SRR13067303 | Catania *et al.*, 2020 |
+| *Botrytis cinerea* | B05.10 | MAINE-seq (MNase equivalent) | SRR13224644, SRR13224647, SRR13224648 | Catania *et al.*, 2020 |
+| *Microbotryum eburneum* | — | ATAC-seq | SRR28069093, SRR28069094, SRR28069106 | Mondo *et al.*, 2024 |
+| *Microbotryum eburneum* | — | Nuc-seq (in vitro) | SRR28069066, SRR28069068 | Mondo *et al.*, 2024 |
+| *Rhodotorula toruloides* | — | Nuc-seq (in vitro) | SRR28069068 | Mondo *et al.*, 2024 |
+| *Catenaria anguillulae* | PL171 | Nuc-seq (in vitro) | SRR7476903 | Mondo *et al.*, 2018 |
+| *Ustilago hordei* | — | Nuc-seq (in vitro) | SRR7472154 | Mondo *et al.*, 2018 |
+| *Morchella importuna* | — | Nuc-seq (in vitro) | SRR7472065 | Mondo *et al.*, 2018 |
+
+#### 17.2 RNA-seq datasets for ChimeraTE analysis
+
+| Species | Data type | Accession / Source | Reference |
+|---|---|---|---|
+| *Mucor lusitanicus* | mRNA-seq | MycoMobilome study | This study |
+| *Rhizopus microsporus* | mRNA-seq | MycoMobilome study | This study |
+| *Phycomyces blakesleeanus* | mRNA-seq | MycoMobilome study | This study |
+| *Amphimedon queenslandica* (AP_Amoprot) | mRNA-seq | SRA (NCBI) | Public |
+| *Blastobotrys brendanlejeunia* (BL_Blabri1) | mRNA-seq | SRA (NCBI) | Public |
+| *Basidiobolus meristosporus* (BS_Basme92) | mRNA-seq | SRA (NCBI) | Public |
+| *Batrachochytrium dendrobatidis* (CH_Batde5) | mRNA-seq | SRA (NCBI) | Public |
+| *Batrachochytrium salamandrivorans* (CH_Batsa1) | mRNA-seq | SRA (NCBI) | Public |
+| *Piromyces finnis* (CH_Pirfi3) | mRNA-seq | SRA (NCBI) | Public |
+| *Enterocytozoon bieneusi* (EN_Entmai1) | mRNA-seq | SRA (NCBI) | Public |
+| *Zoophthora radicans* (EN_Zoorad1) | mRNA-seq | SRA (NCBI) | Public |
+| *Geosiphon pyriformis* (GL_Geopyr1) | mRNA-seq | SRA (NCBI) | Public |
+| *Rhizophagus clarus* (GL_Rhicl1) | mRNA-seq | SRA (NCBI) | Public |
+| *Rhizophagus irregularis* (GL_RhiirA4) | mRNA-seq | SRA (NCBI) | Public |
+| *Coelomomyces lativittatus* (KX_Coemoj1) | mRNA-seq | SRA (NCBI) | Public |
+| *Kickxella alabastrina* (KX_Kicala1) | mRNA-seq | SRA (NCBI) | Public |
+| *Encephalitozoon cuniculi* (MI_Enccu1) | mRNA-seq | SRA (NCBI) | Public |
+| *Spraguea lophii* (MI_Sprlo1) | mRNA-seq | SRA (NCBI) | Public |
+| *Vavraia culicis* (MI_Vavcu1) | mRNA-seq | SRA (NCBI) | Public |
+| *Discodinia discoidea* (MO_Disdec1) | mRNA-seq | SRA (NCBI) | Public |
+| *Mortierella elongata* (MO_Morel2) | mRNA-seq | SRA (NCBI) | Public |
+| *Fonticula alba* (NU_Fontalba) | mRNA-seq | SRA (NCBI) | Public |
+| *Pilobolus crystallinus* (ZO_Pipcy3) | mRNA-seq | SRA (NCBI) | Public |
+
+*Note: Individual SRA run accessions for RNA-seq datasets are catalogued in the
+source data sheet `SupplTab_RNA-seq_accessions`.*
+
+#### 17.3 DAP-seq transcription factor binding data
+
+| Species | Data type | Source |
+|---|---|---|
+| *Rhizopus microsporus* ATCC11559 | DAP-seq peaks for 58 TFs (MEME motif files) | This study; `data/TFsDAP/motifs/` |
+
+#### 17.4 PacBio kinetics (6mA methylation)
+
+| Species | Data type | Source |
+|---|---|---|
+| *Phycomyces blakesleeanus* | PacBio CLR + IPD kinetics | This study |
+| *Rhizopus microsporus* | PacBio CLR + IPD kinetics | This study |
+
+#### 17.5 Small RNA sequencing
+
+| Species | Data type | Source |
+|---|---|---|
+| *Mucor lusitanicus* | sRNA-seq (Illumina HiSeq 2500, 1×50 bp) | This study |
 
 
 ---
@@ -1612,3 +2082,84 @@ described below.
 All numerical values are the direct inputs to the corresponding figure panels.
 Processed intermediate tables are available in the per-section `results/`
 directories of the code repository; paths and formats are defined in `config.sh`.
+
+---
+
+## Part IV — Published Data Accession IDs
+
+The table below lists all publicly available datasets downloaded and reanalysed in
+this study.  Accession numbers refer to the NCBI Sequence Read Archive (SRA) unless
+otherwise stated.
+
+### Nucleosome positioning and chromatin accessibility
+
+| Species | Strain / condition | Assay | Accession(s) | Reference |
+|---|---|---|---|---|
+| *Rhizopus microsporus* | ATCC11559, vegetative | MNase-seq | Legacy WIG (see §10 / §11.4) | Lax et al. (this study) |
+| *Neurospora crassa* | OR74A, vegetative | MNase-seq | SRR13067301, SRR13067302, SRR13067303 | Gurrea-Rubio et al. 2021 |
+| *Botrytis cinerea* | B05.10, vegetative | MAINE-seq | SRR13224644, SRR13224647, SRR13224648 | Bellacosa et al. 2022 |
+| *Microbotryum eburneum* | STE-U 5482, vegetative | ATAC-seq | SRR28069093, SRR28069094, SRR28069106 | Cascales et al. 2024 |
+| *M. eburneum* | STE-U 5482, vegetative | NucSeq (in vitro) | SRR28069066, SRR28069068 | Cascales et al. 2024 |
+| *Rhodotorula toruloides* | IFO 0880 | NucSeq (in vitro) | SRR28069068 | Cascales et al. 2024 |
+| *Catenaria anguillulae* | PL171 | NucSeq (in vitro) | SRR7476903 | Mondo et al. 2017 (JGI) |
+| *Ustilago scitaminea* / *Sf1*-related | — | NucSeq (in vitro) | SRR7472154 | Mondo et al. 2017 (JGI) |
+| *Marasmius fiardii* / *Bf1* | — | NucSeq (in vitro) | SRR7472065 | Mondo et al. 2017 (JGI) |
+
+### Histone modification ChIP-seq
+
+| Species | Strain / condition | Assay | Accession(s) | Reference |
+|---|---|---|---|---|
+| *Rhizopus microsporus* | ATCC11559, vegetative | H3K9me3 ChIP + Input | In-house PE Illumina — deposited in this study | Lax et al. (this study) |
+| *Mucor lusitanicus* | CBS 277.49, vegetative | H3K9me3 | (see §10; deposited in this study) | Lax et al. (this study) |
+
+### 5-methylcytosine bisulfite sequencing (WGBS)
+
+| Species | Strain / condition | Accession(s) | Reference |
+|---|---|---|---|
+| *Rhizopus microsporus* | ATCC11559 | Deposited in this study | Lax et al. (this study) |
+| *Phycomyces blakesleeanus* | NRRL 1555 | Deposited in this study | Lax et al. (this study) |
+| *Mucor lusitanicus* | CBS 277.49 | Deposited in this study | Lax et al. (this study) |
+
+### N6-methyladenine (PacBio SMRT)
+
+| Species | Strain | Accession(s) | Reference |
+|---|---|---|---|
+| *Phycomyces blakesleeanus* | NRRL 1555 | Deposited in this study | Lax et al. (this study) |
+| *Rhizopus microsporus* | ATCC11559 | Deposited in this study | Lax et al. (this study) |
+
+### Small RNA (sRNA / piRNA / siRNA)
+
+| Species | Strain / condition | Accession(s) | Reference |
+|---|---|---|---|
+| *Mucor lusitanicus* | CBS 277.49, vegetative | Deposited in this study | Lax et al. (this study) |
+
+### mRNA-seq for chimeric TE transcript detection (ChimeraTE)
+
+| Species | Clade | Accession(s) | Reference |
+|---|---|---|---|
+| *Mucor lusitanicus* | MU | Deposited / reanalysed | Lax et al. (this study) |
+| *Rhizopus microsporus* | MU | Deposited / reanalysed | Lax et al. (this study) |
+| *Phycomyces blakesleeanus* | MU | Deposited / reanalysed | Lax et al. (this study) |
+| *Aphanomyces* sp. (AP_Amoprot) | AP | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Blastocladiella* sp. (BL_Blabri1) | BL | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Basidiobolus* sp. (BS_Basme92) | BS | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Batrachochytrium dendrobatidis* JEL423 | CH | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Batrachochytrium salamandrivorans* | CH | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Piromyces finnis* | CH | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Enterocytozoon bieneusi* H348 | EN | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Zoophthora radicans* | EN | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Geosiphon pyriformis* | GL | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Rhizophagus clarus* | GL | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Rhizophagus irregularis* DAOM197198 | GL | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Coemansia mojavensis* | KX | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Kickxella alabastrina* | KX | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Encephalitozoon cuniculi* | MI | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Spraguea lophii* | MI | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Vavraia culicis* | MI | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Diaphanoeca grandis* (outgroup) | MO | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Monosiga brevicollis* | MO | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Nuclearia* sp. (NU_Fontalba) | NU | SRA (EDF-TE dataset) | Lax et al. (this study) |
+| *Pigoraptor* sp. (ZO_Pipcy3) | ZO | SRA (EDF-TE dataset) | Lax et al. (this study) |
+
+*Note: Exact SRA accession numbers for the EDF-TE-specific RNA-seq libraries will be added upon data deposition prior to publication.*
+
