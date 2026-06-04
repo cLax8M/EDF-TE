@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=synteny46
 #SBATCH --partition=normal.1000h
-#SBATCH --time=200:00:00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=60G
 #SBATCH --output=/data/carlos/EDF-TE/EDF-TE/Synteny/data/logs/slurm_steps46_%j.log

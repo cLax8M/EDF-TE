@@ -7,28 +7,28 @@ Colors match the legend approved by the user (April 2026):
 
 CLADE_COLORS = {
     # Dikarya
-    "AS": "#e9967a",  # Ascomycota         (salmon)
-    "BA": "#4472c4",  # Basidiomycota      (blue)
+    "AS": "#e8887a",  # Ascomycota              (salmon)
+    "BA": "#4472c4",  # Basidiomycota           (steel blue)
     # Mucoromycota subphyla
-    "MU": "#e07b39",  # Mucoromycotina     (orange)
-    "MO": "#ffb6c1",  # Mortierellomycotina (light pink)
-    "GL": "#8b6355",  # Glomeromycotina    (brown)
+    "MU": "#e07840",  # Mucoromycotina          (orange)
+    "MO": "#f4a8b0",  # Mortierellomycotina     (light pink)
+    "GL": "#8b5e48",  # Glomeromycotina         (brown)
     # Zoopagomycota subphyla
-    "KX": "#ffc000",  # Kickxellomycotina  (amber)
-    "ZO": "#a9d18e",  # Zoopagomycotina    (yellow-green)
-    "EN": "#c00000",  # Entomophthoromycotina (red)
-    "BS": "#d5b8e0",  # Basidiobolomycota  (lavender)
+    "KX": "#f0a820",  # Kickxellomycotina       (amber)
+    "ZO": "#c8dc70",  # Zoopagomycotina         (lime green)
+    "EN": "#e01010",  # Entomophthoromycotina   (vivid red)
+    "BS": "#d0b4e0",  # Basidiobolomycota       (lavender)
     # Early-diverging fungi
-    "OL": "#1f5c9e",  # Olpidiomycota      (dark blue)
-    "CH": "#ffd700",  # Chytridiomycetes   (gold)
-    "NE": "#9b59b6",  # Neocallimastigomycetes (mauve / muted purple)
-    "BL": "#7030a0",  # Blastocladiomycota (purple)
-    "MI": "#2a9d8f",  # Microsporidia      (teal — matches manuscript legend)
-    "CR": "#87ceeb",  # Cryptomycota       (sky blue)
-    "AP": "#4caf50",  # Aphelidiomycota    (green)
+    "OL": "#3668b0",  # Olpidiomycota           (medium blue)
+    "CH": "#e0d040",  # Chytridiomycetes        (muted yellow)
+    "NE": "#9060b0",  # Neocallimastigomycetes  (medium purple)
+    "BL": "#7030a0",  # Blastocladiomycota      (dark purple)
+    "MI": "#3aab98",  # Microsporidia           (teal)
+    "CR": "#a8c8e8",  # Cryptomycota            (powder blue)
+    "AP": "#5c9e3a",  # Aphelidiomycota         (forest green)
     # Outgroups
-    "NU": "#1a2b5f",  # Nucleariida        (dark navy)
-    "HO": "#bdd7ee",  # Holozoa+Amoebozoa  (pale blue)
+    "NU": "#1a2850",  # Nucleariida             (dark navy)
+    "HO": "#b4d0e8",  # Holozoa+Amoebozoa       (pale blue)
 }
 
 CLADE_NAMES = {

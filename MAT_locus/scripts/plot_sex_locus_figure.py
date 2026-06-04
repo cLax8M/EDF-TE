@@ -300,6 +300,36 @@ def _inject_mu402(master, idio, te_det, tblastn):
 
 master, idio, te_det, tblastn = _inject_mu402(master, idio, te_det, tblastn)
 
+# ── 2026-05-01: replace the "idiomorphic region" TE% with a fixed ±10 kb
+# flanking window centred on the sex-gene midpoint (FLANK_BP = 10 000 bp,
+# total window = 20 000 bp).  This makes panel A directly comparable across
+# species (the idiomorphic region had heterogeneous lengths from blastp
+# orthology calls).  TE intervals are taken from te_view (collected at
+# ±15 kb in build_master_v3.py, so it fully contains the new ±10 kb window).
+FLANK_BP = 10000
+def _compute_flank_te_pct(master_df, te_view_df, flank=FLANK_BP):
+    rows = []
+    for _, r in master_df.iterrows():
+        sp = r["species"]
+        if pd.isna(r.get("sex_start")) or pd.isna(r.get("sex_end")):
+            rows.append(None); continue
+        sex_mid = (float(r["sex_start"]) + float(r["sex_end"])) / 2.0
+        ws, we = sex_mid - flank, sex_mid + flank
+        sub = te_view_df[te_view_df["species"] == sp]
+        if len(sub) == 0:
+            rows.append(0.0); continue
+        # Clip each TE interval to the ±flank window and sum bp
+        s = sub["te_start"].astype(float).clip(lower=ws)
+        e = sub["te_end"].astype(float).clip(upper=we)
+        ovl = (e - s + 1).clip(lower=0)
+        rows.append(float(100.0 * ovl.sum() / (2 * flank)))
+    return rows
+
+master["TE_pct_flank10"] = _compute_flank_te_pct(master, te_view)
+master["TE_bp_flank10"]  = (master["TE_pct_flank10"].fillna(0) * (2 * FLANK_BP) / 100.0).round().astype("Int64")
+print(f"[INFO] Computed TE_pct_flank10 (±{FLANK_BP} bp window around sex-gene midpoint) "
+      f"for {master['TE_pct_flank10'].notna().sum()} species")
+
 identified_full = master[master["mating_type"].isin(["P", "M"])].copy()  # only CONFIRMED sexM / sexP
 # 2026-04-28: Fenlin1 (second Fenlin strain) is excluded from the GENERAL figure;
 # it is shown separately in the dedicated Fenlin synteny figure.  Data structures
@@ -307,9 +337,9 @@ identified_full = master[master["mating_type"].isin(["P", "M"])].copy()  # only 
 # can still access it.
 _DROP_FROM_MAIN = {"Fenlin1"}
 identified_full = identified_full[~identified_full["species"].isin(_DROP_FROM_MAIN)].copy()
-identified_full = identified_full.sort_values("TE_pct_idiomorphic", ascending=False)
+identified_full = identified_full.sort_values("TE_pct_flank10", ascending=False)
 
-# Keep ONLY the top-10 species by TE_pct_idiomorphic (user request 2026-04-22)
+# Keep ONLY the top-10 species by TE_pct_flank10 (user request 2026-05-01)
 TOP_N = 10
 identified = identified_full.head(TOP_N).copy()
 # 2026-04-24: also force-include Mlus402 (M. lusitanicus CBS v3) regardless of rank
@@ -321,10 +351,10 @@ for _sp in _force:
     if len(extra):
         identified = pd.concat([identified, extra], ignore_index=True)
 # Re-sort ascending so panel A reads bottom→top from low→high TE%
-identified = identified.sort_values("TE_pct_idiomorphic", ascending=True).reset_index(drop=True)
-print(f"[INFO] Keeping top-{TOP_N} species (out of {len(identified_full)} confirmed sexM/sexP) by TE%:")
+identified = identified.sort_values("TE_pct_flank10", ascending=True).reset_index(drop=True)
+print(f"[INFO] Keeping top-{TOP_N} species (out of {len(identified_full)} confirmed sexM/sexP) by TE% (±{FLANK_BP} bp):")
 for _, r in identified.iterrows():
-    print(f"        {r['species']:>10s}  {r['mating_type']}  {r['TE_pct_idiomorphic']:.1f}% TE")
+    print(f"        {r['species']:>10s}  {r['mating_type']}  {r['TE_pct_flank10']:.1f}% TE")
 
 # ── Emit a TSV with the genomic coordinates for the selected 10 ────────────
 # Save in BOTH WORKDIR (data dir) and /legserv MAT_locus/tables (visible tree).
@@ -334,7 +364,8 @@ TOP10_OUT_LOCAL = WORKDIR / "sex_locus_top10_coords.tsv"
 TOP10_OUT       = TABLES_DIR / "sex_locus_top10_coords.tsv"
 _top10_cols = ["species", "mating_type", "sex_scaffold", "sex_start", "sex_end",
                "sex_strand", "sex_size_aa",
-               "TE_bp_idiomorphic", "TE_pct_idiomorphic"]
+               "TE_bp_idiomorphic", "TE_pct_idiomorphic",
+               "TE_bp_flank10", "TE_pct_flank10"]
 _idio_lookup = (idio.drop_duplicates("species", keep="last")
                     .set_index("species")[["scaffold", "start", "end"]]
                     .to_dict("index"))
@@ -364,7 +395,7 @@ TOP10_FAA_LOCAL = WORKDIR / "sex_locus_top10_proteins.faa"
 TOP10_FAA       = TABLES_DIR / "sex_locus_top10_proteins.faa"
 _keep_species = set(identified["species"])
 _mt_map = dict(zip(identified["species"], identified["mating_type"]))
-_te_map = dict(zip(identified["species"], identified["TE_pct_idiomorphic"]))
+_te_map = dict(zip(identified["species"], identified["TE_pct_flank10"]))
 if _AA_SRC.exists():
     _written = 0
     _seen_species = set()
@@ -475,7 +506,7 @@ def te_main_class(cls):
 # ─── PANEL A: Bar chart — TE% per species ─────────────────────────────────────
 def panel_a(ax):
     sp_list = identified["species"].tolist()
-    te_pct  = identified["TE_pct_idiomorphic"].fillna(0).tolist()
+    te_pct  = identified["TE_pct_flank10"].fillna(0).tolist()
     mt_list = identified["mating_type"].tolist()
     colors  = [MT_COLOR[m] for m in mt_list]
 
@@ -483,8 +514,8 @@ def panel_a(ax):
     ax.barh(y, te_pct, color=colors, height=0.7, linewidth=0.3, edgecolor="white")
     ax.set_yticks(y)
     ax.set_yticklabels([f"$\\it{{{s}}}$" for s in sp_list], fontsize=6.5)
-    ax.set_xlabel("TE content in idiomorphic region (%)", fontsize=8)
-    ax.set_xlim(0, 75)
+    ax.set_xlabel(f"TE content within \u00b1{FLANK_BP//1000} kb of sex gene (%)", fontsize=8)
+    ax.set_xlim(0, max(75, max(te_pct) * 1.10 if te_pct else 75))
     ax.axvline(0, color="k", lw=0.5)
     ax.spines[["top","right"]].set_visible(False)
     ax.tick_params(axis="x", labelsize=7)
@@ -501,7 +532,8 @@ def panel_a(ax):
     ]
     ax.legend(handles=handles, fontsize=6.5, loc="lower right",
               frameon=True, framealpha=0.9, edgecolor="lightgray")
-    ax.set_title("A   TE density in idiomorphic region", fontsize=9, loc="left", pad=4, fontweight="bold")
+    ax.set_title(f"A   TE density (\u00b1{FLANK_BP//1000} kb)",
+                 fontsize=9, loc="left", pad=4, fontweight="bold")
 
 
 # ─── Helper: draw gene arrow ──────────────────────────────────────────────────
@@ -543,7 +575,7 @@ def draw_arrow_gene(ax, start, end, y, color, label=None, fontsize=6.5, height=0
 # i.e. the top-10 confirmed sexP/sexM species ranked by TE % in the
 # idiomorphic region. Order = highest TE% on top → lowest at the bottom.
 REPRESENTATIVES = [(sp, "top10") for sp in identified.sort_values(
-    "TE_pct_idiomorphic", ascending=False)["species"].tolist()]
+    "TE_pct_flank10", ascending=False)["species"].tolist()]
 
 def panel_b(ax_list, te_detail):
     """Draw one locus diagram per axis."""
@@ -560,15 +592,16 @@ def panel_b(ax_list, te_detail):
             ax.set_visible(False)
             continue
 
-        # Idio region
+        # Idio region (optional — only used for the light grey shading;
+        # since 2026-05-01 the figure no longer depends on it for the metric)
         idio_row = idio[idio["species"]==sp]
         if len(idio_row) == 0:
-            ax.set_visible(False)
-            continue
-        # take last (avoid duplicate for Phybl4)
-        idio_row = idio_row.iloc[-1]
-        reg_start = idio_row["start"]
-        reg_end   = idio_row["end"]
+            reg_start = reg_end = None
+        else:
+            # take last (avoid duplicate for Phybl4)
+            _ir = idio_row.iloc[-1]
+            reg_start = _ir["start"]
+            reg_end   = _ir["end"]
 
         # Get rnhA + tptA from tblastn on locus scaffold
         hits = tblastn[(tblastn["species"]==sp) & (tblastn["scaffold"]==scaf)]
@@ -580,7 +613,13 @@ def panel_b(ax_list, te_detail):
         # be compared visually 1-to-1.
         FIXED_VIEW_FLANK = 15000
         sex_mid = int((row["sex_start"] + row["sex_end"]) / 2)
-        view_start = max(0, sex_mid - FIXED_VIEW_FLANK)
+        # 2026-05-01: do NOT clamp view_start to 0 — clamping breaks the
+        # alignment of species whose sex locus lies near the start of a
+        # scaffold (e.g. Lenpar1, sex_mid ≈ 4 kb).  The fixed-width window
+        # must always be 2 × FIXED_VIEW_FLANK so all panel-B tracks share
+        # the same scale; off-scaffold positions simply have no features
+        # to draw, which is the correct behaviour.
+        view_start = sex_mid - FIXED_VIEW_FLANK
         view_end   = sex_mid + FIXED_VIEW_FLANK
 
         # We still load helicase / tptA HSPs (only used to draw arrows below;
@@ -612,9 +651,10 @@ def panel_b(ax_list, te_detail):
         # Backbone line
         ax.plot([0, vlen], [0, 0], color="#555555", lw=1.5, zorder=1)
 
-        # Idiomorphic region shading
-        ax.axvspan(norm(reg_start), norm(reg_end),
-                   ymin=0.25, ymax=0.75, alpha=0.12, color="#888888", zorder=0)
+        # Idiomorphic region shading (only if known)
+        if reg_start is not None and reg_end is not None:
+            ax.axvspan(norm(reg_start), norm(reg_end),
+                       ymin=0.25, ymax=0.75, alpha=0.12, color="#888888", zorder=0)
 
         # TE blocks within the WIDER view window (±15 kb of sex midpoint).
         # We draw all TEs intersecting the view (te_view), and outline in red
@@ -742,11 +782,11 @@ def panel_b(ax_list, te_detail):
         ax.plot([sb_x, sb_x + 1000], [-0.85, -0.85], color="black", lw=1.5)
         ax.text(sb_x + 500, -1.05, "1 kb", ha="center", va="top", fontsize=5.5, clip_on=False)
 
-        # TE% label
-        te_pct = row["TE_pct_idiomorphic"]
+        # TE% label (±10 kb flanking window — same metric as panel A)
+        te_pct = row.get("TE_pct_flank10")
         if pd.notna(te_pct):
-            # place label below the idiomorphic region center
-            ax.text(norm((reg_start + reg_end)/2), -0.55,
+            # place label below the sex-gene midpoint
+            ax.text(norm(sex_mid), -0.55,
                     f"{te_pct:.1f}% TE", ha="center", va="top", fontsize=5.5,
                     color="#555555", clip_on=True)
 
@@ -781,13 +821,28 @@ def panel_b(ax_list, te_detail):
 
 # ─── PANEL C: TE class composition — stacked bar ──────────────────────────────
 def panel_c(ax):
-    """Stacked bar chart of TE bp per class in idiomorphic region, per species."""
+    """Stacked bar chart of TE bp per class within \u00b1FLANK_BP of sex-gene midpoint, per species."""
     sp_order = identified["species"].tolist()  # same order as panel A
 
-    # Aggregate TE bp by species and main class
-    sp_te = te_det[te_det["region"]=="idiomorphic"].copy()
+    # Aggregate TE bp by species and main class, restricted to the same
+    # \u00b110 kb flanking window used for panel A (consistency requested
+    # by user 2026-05-01: drop the heterogeneous "idiomorphic region").
+    sp_te = te_view.copy()
+    # Clip TE intervals to per-species \u00b1FLANK_BP window around sex_mid
+    sex_mid_map = {}
+    for _, _r in master.iterrows():
+        if pd.notna(_r.get("sex_start")) and pd.notna(_r.get("sex_end")):
+            sex_mid_map[_r["species"]] = (float(_r["sex_start"]) + float(_r["sex_end"])) / 2.0
+    sp_te["_sex_mid"] = sp_te["species"].map(sex_mid_map)
+    sp_te = sp_te.dropna(subset=["_sex_mid"]).copy()
+    sp_te["_ws"] = sp_te["_sex_mid"] - FLANK_BP
+    sp_te["_we"] = sp_te["_sex_mid"] + FLANK_BP
+    s = sp_te[["te_start","_ws"]].max(axis=1)
+    e = sp_te[["te_end",  "_we"]].min(axis=1)
+    sp_te["_ovl_flank"] = (e - s + 1).clip(lower=0)
+    sp_te = sp_te[sp_te["_ovl_flank"] > 0]
     sp_te["main_class"] = sp_te["te_class"].apply(te_main_class)
-    agg = sp_te.groupby(["species","main_class"])["overlap_bp"].sum().unstack(fill_value=0)
+    agg = sp_te.groupby(["species","main_class"])["_ovl_flank"].sum().unstack(fill_value=0)
 
     # Add missing species as zeros
     for sp in sp_order:
@@ -829,7 +884,7 @@ def panel_c(ax):
 
     ax.set_yticks(y)
     ax.set_yticklabels([])  # already labeled in panel A
-    ax.set_xlabel("TE bp in idiomorphic region", fontsize=8)
+    ax.set_xlabel(f"TE bp within \u00b1{FLANK_BP//1000} kb of sex gene", fontsize=8)
     ax.spines[["top","right"]].set_visible(False)
     ax.tick_params(axis="x", labelsize=7)
 

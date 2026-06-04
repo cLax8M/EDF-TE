@@ -84,6 +84,7 @@ d01 = d01.rename(columns={"species": "taxon"})
 d01["taxon"] = d01["taxon"].replace({
     "AS_AspfumUD":  "AS_AspfumUD1",
     "NU_Parvatl":   "NU_Parvatl_c",
+    "HO_Magisepte": "HO_Magisepte_c",
 })
 
 # Real TE % = Class I + Class II (exclude Unclassified and Other)

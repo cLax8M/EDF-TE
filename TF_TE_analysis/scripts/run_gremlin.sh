@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=gremlin_centromere
 #SBATCH --partition=normal.168h
-#SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --output=/data/carlos/EDF-TE/logs/gremlin_centromere_%j.out

@@ -39,6 +39,22 @@ SP_A_COLORS = [
 ]
 SP_B_COLOR = "#c7c7c7"  # neutral grey for species B scaffolds
 
+# ── TE annotation ─────────────────────────────────────────────────────────────
+TE_ANNOT_DIR = Path("/data/carlos/EDF-TE/TE_analysis/annotated")
+_TE_SKIP = frozenset([
+    "Low_complexity", "Simple_repeat", "rRNA", "Satellite",
+    "Telomeric_repeat", "scRNA", "snRNA", "srpRNA", "tRNA",
+])
+
+# Class I (RNA-based transposons): LTR, LINE, SINE, Retroposons
+_CLASS1_PREFIXES = ("LTR", "LINE", "SINE", "Retroposon")
+# Class II (DNA-based transposons): DNA TEs, Helitrons, RC elements
+_CLASS2_PREFIXES = ("DNA", "RC")
+
+# Colors for Class I / II split track
+_COLOR_CLASS1 = "#f0c010"   # amber/yellow  – Class I (LTR, LINE, SINE)
+_COLOR_CLASS2 = "#8040b0"   # purple        – Class II (DNA TEs, Helitron)
+
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__,
@@ -61,6 +77,8 @@ def parse_args():
                    help="Run multiple pairs from --pairs list")
     p.add_argument("--pairs", nargs="*",
                    help="CLADE:SpA:SpB triplets for batch mode")
+    p.add_argument("--class-split", action="store_true", dest="class_split",
+                   help="TE track: Class I (yellow) + Class II (purple) stacked bars")
     return p.parse_args()
 
 
@@ -112,6 +130,80 @@ def load_collinear(collinear_dir, clade, sp_a, sp_b):
     return pairs
 
 
+def load_te_density(sp, scaffolds, genome, n_windows=50, split_classes=False):
+    """Compute per-window TE density fraction for selected scaffolds.
+
+    Returns:
+      split_classes=False: {scaffold: [(frac_start, frac_end, density), ...]}
+      split_classes=True:  {scaffold: [(frac_start, frac_end, dens_I, dens_II), ...]}
+    """
+    scaf_set = set(scaffolds)
+    base = TE_ANNOT_DIR / f"{sp}_EarlGrey"
+    bed = base / f"{sp}_mergedRepeats" / "looseMerge" / f"{sp}.filteredRepeats.bed"
+    if not bed.exists():
+        bed = base / f"{sp}_summaryFiles" / f"{sp}.filteredRepeats.bed"
+    if not bed.exists():
+        print(f"  [TE] No BED found for {sp}, skipping TE track")
+        return {}
+
+    # Store intervals by scaffold; for class split, store (start, end, class_id)
+    # class_id: 1 = Class I, 2 = Class II, 0 = unknown/other
+    te_ivs: dict = defaultdict(list)
+    with open(bed) as fh:
+        for line in fh:
+            c = line.strip().split("\t")
+            if len(c) < 4:
+                continue
+            scaf, start, end, cls = c[0], int(c[1]), int(c[2]), c[3]
+            if scaf not in scaf_set or cls in _TE_SKIP:
+                continue
+            if split_classes:
+                top = cls.split("/")[0]
+                if top in _CLASS1_PREFIXES:
+                    cid = 1
+                elif top in _CLASS2_PREFIXES:
+                    cid = 2
+                else:
+                    cid = 0   # Unknown class — skip for class split view
+                if cid > 0:
+                    te_ivs[scaf].append((start, end, cid))
+            else:
+                te_ivs[scaf].append((start, end))
+
+    density = {}
+    for scaf in scaffolds:
+        sz = genome.get(scaf, 0)
+        if sz == 0:
+            continue
+        wins = []
+        for i in range(n_windows):
+            ws = int(i * sz / n_windows)
+            we = int((i + 1) * sz / n_windows)
+            wlen = max(we - ws, 1)
+            if split_classes:
+                ivs1 = sorted((s, e) for s, e, cid in te_ivs.get(scaf, []) if cid == 1)
+                ivs2 = sorted((s, e) for s, e, cid in te_ivs.get(scaf, []) if cid == 2)
+                def _cov(ivs):
+                    return sum(
+                        min(te, we) - max(ts, ws)
+                        for ts, te in ivs
+                        if ts < we and te > ws
+                    )
+                dens_I  = min(_cov(ivs1) / wlen, 1.0)
+                dens_II = min(_cov(ivs2) / wlen, 1.0 - dens_I)
+                wins.append((ws / sz, we / sz, dens_I, dens_II))
+            else:
+                ivs = sorted(te_ivs.get(scaf, []))
+                covered = sum(
+                    min(te, we) - max(ts, ws)
+                    for ts, te in ivs
+                    if ts < we and te > ws
+                )
+                wins.append((ws / sz, we / sz, min(covered / wlen, 1.0)))
+        density[scaf] = wins
+    return density
+
+
 def select_scaffolds(pairs, pos_a, pos_b, max_scaf, min_links,
                      genome_a=None, genome_b=None, top_by_size=0):
     """Select scaffolds either by collinear pair count (default) or by
@@ -151,7 +243,8 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
                      patristic_dist=None, te_pct_a=None, te_pct_b=None,
                      ri_a=None, ri_b=None,
                      simple_style=False, n_total_pairs=None,
-                     n_orthologs=None):
+                     n_orthologs=None,
+                     te_density_a=None, te_density_b=None):
     """Generate circos-style matplotlib figure."""
 
     gap_frac = 0.02      # gap between scaffolds (fraction of circle)
@@ -176,6 +269,12 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
     total_gap_angle = n_gap_small * gap_frac + n_gap_large * sp_gap_frac
     avail = 2 * np.pi - total_gap_angle
 
+    # Equal perimeters: each species occupies half the available arc,
+    # regardless of genome size.  Within each half the scaffolds are
+    # scaled proportionally to their individual lengths.
+    avail_a = avail / 2
+    avail_b = avail / 2
+
     # Build angular layout: species A on top (right half), species B on bottom (left half)
     arc_map = {}  # scaffold -> (start_angle, end_angle)
     color_map = {}
@@ -187,7 +286,7 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
     sp_b_solid = "#2d8b54"  # green
     for i, s in enumerate(scafs_a):
         sz = genome_a.get(s, 0)
-        span = (sz / total) * avail
+        span = (sz / tot_a) * avail_a if tot_a > 0 else 0
         arc_map[("A", s)] = (angle, angle + span)
         if simple_style:
             color_map[("A", s)] = sp_a_solid
@@ -200,7 +299,7 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
     # Species B scaffolds
     for i, s in enumerate(scafs_b):
         sz = genome_b.get(s, 0)
-        span = (sz / total) * avail
+        span = (sz / tot_b) * avail_b if tot_b > 0 else 0
         arc_map[("B", s)] = (angle, angle + span)
         color_map[("B", s)] = sp_b_solid if simple_style else SP_B_COLOR
         angle += span + gap_frac
@@ -281,13 +380,15 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
 
     # ── Better approach: cartesian figure with manual arcs and Bezier links ──
     fig, ax = plt.subplots(figsize=(10, 10))
-    ax.set_xlim(-1.4, 1.4)
-    ax.set_ylim(-1.4, 1.4)
+    ax.set_xlim(-1.55, 1.55)
+    ax.set_ylim(-1.55, 1.55)
     ax.set_aspect("equal")
     ax.axis("off")
 
     R_inner = 0.90
     R_outer = 1.0
+    R_TE_BASE = R_outer + 0.02
+    R_TE_MAX  = R_outer + 0.16
 
     # Draw scaffold arcs
     for key, (a0, a1) in arc_map.items():
@@ -304,6 +405,65 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
         ax.fill(xs, ys, color=color_map[key], alpha=0.85, edgecolor="white",
                 linewidth=0.5)
 
+    # Draw TE density track (outer ring histogram)
+    if te_density_a or te_density_b:
+        # Detect whether we have class-split (4-tuple) or merged (3-tuple) data
+        _first_dens = (te_density_a or te_density_b)
+        _sample = next(iter(_first_dens.values()), [])
+        _is_split = len(_sample) > 0 and len(_sample[0]) == 4
+
+        for key, (a0, a1) in arc_map.items():
+            sp_tag, scaf = key
+            dens_map = te_density_a if sp_tag == "A" else te_density_b
+            if not dens_map or scaf not in dens_map:
+                continue
+            col = color_map[key]
+            for win in dens_map[scaf]:
+                if _is_split:
+                    frac_s, frac_e, dens_I, dens_II = win
+                    if dens_I <= 0 and dens_II <= 0:
+                        continue
+                    t0 = a0 + frac_s * (a1 - a0)
+                    t1 = a0 + frac_e * (a1 - a0)
+                    n_pts = max(3, int((t1 - t0) * 300))
+                    theta = np.linspace(t0, t1, n_pts)
+                    r_base = R_TE_BASE
+                    # Draw Class I (yellow) from base to base+dens_I
+                    if dens_I > 0:
+                        r_top_I = r_base + dens_I * (R_TE_MAX - R_TE_BASE)
+                        xs = np.concatenate([r_top_I * np.cos(theta),
+                                             r_base * np.cos(theta[::-1])])
+                        ys = np.concatenate([r_top_I * np.sin(theta),
+                                             r_base * np.sin(theta[::-1])])
+                        ax.fill(xs, ys, color=_COLOR_CLASS1, alpha=0.7, linewidth=0)
+                    # Draw Class II (purple) stacked on top of Class I
+                    if dens_II > 0:
+                        r_bot_II = r_base + dens_I * (R_TE_MAX - R_TE_BASE)
+                        r_top_II = r_base + (dens_I + dens_II) * (R_TE_MAX - R_TE_BASE)
+                        xs = np.concatenate([r_top_II * np.cos(theta),
+                                             r_bot_II * np.cos(theta[::-1])])
+                        ys = np.concatenate([r_top_II * np.sin(theta),
+                                             r_bot_II * np.sin(theta[::-1])])
+                        ax.fill(xs, ys, color=_COLOR_CLASS2, alpha=0.7, linewidth=0)
+                else:
+                    frac_s, frac_e, dens = win
+                    if dens <= 0:
+                        continue
+                    t0 = a0 + frac_s * (a1 - a0)
+                    t1 = a0 + frac_e * (a1 - a0)
+                    r_top = R_TE_BASE + dens * (R_TE_MAX - R_TE_BASE)
+                    n_pts = max(3, int((t1 - t0) * 300))
+                    theta = np.linspace(t0, t1, n_pts)
+                    xs = np.concatenate([
+                        r_top * np.cos(theta),
+                        R_TE_BASE * np.cos(theta[::-1])
+                    ])
+                    ys = np.concatenate([
+                        r_top * np.sin(theta),
+                        R_TE_BASE * np.sin(theta[::-1])
+                    ])
+                    ax.fill(xs, ys, color=col, alpha=0.55, linewidth=0)
+
     # Draw scaffold labels
     for key, (a0, a1) in arc_map.items():
         span = a1 - a0
@@ -311,8 +471,8 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
             mid = (a0 + a1) / 2
             sp_tag, scaf = key
             label = scaf if len(scaf) < 18 else scaf[:14] + "…"
-            lx = (R_outer + 0.04) * np.cos(mid)
-            ly = (R_outer + 0.04) * np.sin(mid)
+            lx = (R_TE_MAX + 0.05) * np.cos(mid)
+            ly = (R_TE_MAX + 0.05) * np.sin(mid)
             rot = np.degrees(mid) - 90
             if -180 < rot < -90 or 90 < rot < 180:
                 rot += 180
@@ -369,6 +529,18 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
         link_alpha = 0.35 if simple_style else 0.12
         link_lw = 0.55 if simple_style else 0.3
         if simple_style:
+            # Uniform blue palette for all pairs regardless of synteny score
+            _hi_col  = "#1f3a8a"   # deep navy   (dominant synteny block)
+            _mid_col = "#7bb3e0"   # light blue  (moderate synteny block)
+            _lo_col  = "#cfcfcf"   # pale grey   (noise/rearranged)
+
+            # Scale per-link alpha inversely with pair count so that dense
+            # (high-synteny) pairs produce a visually denser ribbon while
+            # sparse (low-synteny) pairs keep each individual link visible.
+            n_links = len(pairs)
+            # dens_scale: 1.0 at ≤100 links, 0.25 at ≥3000 links (log-scale)
+            dens_scale = max(0.25, 1.0 - 0.3 * np.log10(max(n_links, 1) / 100.0))
+
             # Visual emphasis = how *dominant* this scaffold-pair is for both
             # scaffolds. Conserved synteny → one scaffold's genes mostly go to
             # one partner. Fragmented/eroded synteny → many small partners.
@@ -377,18 +549,18 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
             fb = pc / max(b_scaf_total.get(scaf_b, 1), 1)   # share for sp B scaffold
             dominance = min(fa, fb)                          # 0–1, conservative
             if dominance >= 0.40 and pc >= 5:
-                # strong syntenic block — deep blue
-                link_col = "#1f3a8a"
-                link_alpha = 0.65
+                # strong syntenic block
+                link_col = _hi_col
+                link_alpha = min(0.85, 0.65 * dens_scale * 1.5)
                 link_lw = 0.55 + 0.6 * dominance
             elif dominance >= 0.15 and pc >= 2:
-                link_col = "#7bb3e0"
-                link_alpha = 0.30
+                link_col = _mid_col
+                link_alpha = 0.30 * dens_scale
                 link_lw = 0.35
             else:
                 # rearranged / orphan / TE-mediated noise
-                link_col = "#cfcfcf"
-                link_alpha = 0.12
+                link_col = _lo_col
+                link_alpha = 0.12 * dens_scale
                 link_lw = 0.18
         patch = mpatches_patch.PathPatch(path, facecolor="none",
                                          edgecolor=link_col,
@@ -402,17 +574,18 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
     # Species labels
     # Find midpoint of each species' arc span
     if not simple_style:
+        r_sp_label = R_TE_MAX + 0.18
         if scafs_a:
             mid_a = (arc_map[("A", scafs_a[0])][0] + arc_map[("A", scafs_a[-1])][1]) / 2
-            lx = 1.2 * np.cos(mid_a)
-            ly = 1.2 * np.sin(mid_a)
+            lx = r_sp_label * np.cos(mid_a)
+            ly = r_sp_label * np.sin(mid_a)
             ax.text(lx, ly, sp_a_short, fontsize=10, ha="center", va="center",
                     fontweight="bold", style="italic",
                     color=SP_A_COLORS[0])
         if scafs_b:
             mid_b = (arc_map[("B", scafs_b[0])][0] + arc_map[("B", scafs_b[-1])][1]) / 2
-            lx = 1.2 * np.cos(mid_b)
-            ly = 1.2 * np.sin(mid_b)
+            lx = r_sp_label * np.cos(mid_b)
+            ly = r_sp_label * np.sin(mid_b)
             ax.text(lx, ly, sp_b_short, fontsize=10, ha="center", va="center",
                     fontweight="bold", style="italic", color="#555")
 
@@ -442,7 +615,14 @@ def make_circos_plot(sp_a, sp_b, pairs, scafs_a, scafs_b,
             sub_bits.append(f"d = {patristic_dist:.3f}")
         title = (f"$\\it{{{sp_a_short}}}$ \u2013 $\\it{{{sp_b_short}}}$\n"
                  + "   |   ".join(sub_bits))
-        ax.set_title(title, fontsize=13, pad=12, fontweight="bold")
+        if te_pct_a is not None or te_pct_b is not None:
+            te_parts = []
+            if te_pct_a is not None:
+                te_parts.append(f"{sp_a_short}: {te_pct_a:.1f}%")
+            if te_pct_b is not None:
+                te_parts.append(f"{sp_b_short}: {te_pct_b:.1f}%")
+            title += "\nTE: " + "   |   ".join(te_parts)
+        ax.set_title(title, fontsize=11, pad=12, fontweight="bold")
     else:
         ax.set_title(title, fontsize=12, pad=10)
 
@@ -503,31 +683,21 @@ def main():
                     except ValueError:
                         pass
 
-    # Load synteny ratios and patristic distances for labels
-    ratio_file = Path(args.bed_dir).parent / "ratios" / "all_clades_synteny_ratios.tsv"
-    scores = {}
-    if ratio_file.exists():
-        with open(ratio_file) as fh:
-            next(fh)
-            for line in fh:
-                c = line.strip().split("\t")
-                if len(c) >= 9:
-                    key = tuple(sorted([c[1], c[2]]))
-                    scores[key] = float(c[8])
-
-    # Load patristic distances from corrected file
+    # Load patristic distances AND corrected r from corrected file
     corrected_file = Path("/legserv/Temp/Carlos/EDF-TE/results/Synteny_guide_corrected/"
                           "corrected_synteny_ratios.tsv")
     distances = {}
+    scores = {}   # use r_corrected_norm (col 12, 0-based) as the displayed r
     if corrected_file.exists():
         with open(corrected_file) as fh:
             next(fh)
             for line in fh:
                 c = line.strip().split("\t")
-                if len(c) >= 10:
+                if len(c) >= 13:
                     key = tuple(sorted([c[1], c[2]]))
                     try:
-                        distances[key] = float(c[9])  # d_ij column
+                        distances[key] = float(c[9])   # d_ij
+                        scores[key]    = float(c[12])  # r_corrected_norm
                     except ValueError:
                         pass
 
@@ -560,6 +730,13 @@ def main():
         score = scores.get(score_key)
         dist = distances.get(score_key)
 
+        # Load TE density for outer track
+        print(f"  Loading TE density...")
+        te_dens_a = load_te_density(sp_a, scafs_a, genome_a,
+                                    split_classes=args.class_split)
+        te_dens_b = load_te_density(sp_b, scafs_b, genome_b,
+                                    split_classes=args.class_split)
+
         out_path = out_dir / f"circos_{sp_a}__{sp_b}.pdf"
         make_circos_plot(sp_a, sp_b, filt, scafs_a, scafs_b,
                         genome_a, genome_b, out_path, synteny_score=score,
@@ -569,7 +746,9 @@ def main():
                         ri_a=ri_vals.get(sp_a),
                         ri_b=ri_vals.get(sp_b),
                         simple_style=args.simple_style,
-                        n_total_pairs=len(raw_pairs))
+                        n_total_pairs=len(raw_pairs),
+                        te_density_a=te_dens_a,
+                        te_density_b=te_dens_b)
 
     print("\n[DONE]")
 

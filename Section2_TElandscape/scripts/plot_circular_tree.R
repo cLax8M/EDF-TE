@@ -39,34 +39,52 @@ if (use_HO_clade) {
   OUT_PDF   <- "/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/figures/circular_tree_HOclade_v4.pdf"
   cat("[MODE] HO-clade-rooted (test)\n")
 } else {
-  TREE_FILE <- "/data/carlos/EDF-TE/SpeciesTree/08_guide_tree/guide_rooted_Naegrub.treefile"
+  TREE_FILE <- "/legserv/Temp/Carlos/EDF-TE/results/SpeciesTree/final_LG_G_rotated.nwk"
   OUT_PDF   <- "/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/figures/circular_tree_v4.pdf"
-  cat("[MODE] Naegrub-rooted (original)\n")
+  cat("[MODE] Naegrub-rooted (final_LG_G_rotated)\n")
 }
 DATA_FILE <- "/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/figure_species_data.tsv"
 dir.create(dirname(OUT_PDF), showWarnings = FALSE, recursive = TRUE)
 
 # ─── Load ─────────────────────────────────────────────────────────────────────
+options(expressions = 100000L)   # avoid recursion limit for deep trees
 tree <- read.tree(TREE_FILE)
 dat  <- read.delim(DATA_FILE, stringsAsFactors = FALSE) %>%
   rename(label = tree_label) %>%
+  mutate(label = sub("\\.aa$", "", label)) %>%
   filter(!is.na(label)) %>%
   select(label, everything())
 
-cat("[INFO] Tree tips:", length(tree$tip.label),
+# ─── NWK is pre-rotated; ladderize=FALSE in ggtree preserves the order ─────────
+# Rotate MO to appear below GL and MU (flip children of their MRCA node).
+NE_SPECIES_circ <- c("CH_Anasp1","CH_Neocon1","CH_Neolan1","CH_Orpsp1",
+                     "CH_Pecora1","CH_Caecom1","CH_Pirfi3")
+get_clade_circ <- function(sp) {
+  ifelse(sp %in% NE_SPECIES_circ, "NE", substr(sp, 1L, 2L))
+}
+# Find one representative per clade to locate the MO/GL/MU subtree
+get_clade_rep <- function(clade) tree$tip.label[get_clade_circ(tree$tip.label)==clade][1]
+mo_rep <- get_clade_rep("MO"); gl_rep <- get_clade_rep("GL"); mu_rep <- get_clade_rep("MU")
+if (!any(is.na(c(mo_rep, gl_rep, mu_rep)))) {
+  tree <- ape::rotate(tree, getMRCA(tree, c(mo_rep, gl_rep, mu_rep)))
+  cat("[INFO] Rotated MO below GL+MU\n")
+}
+
+n_tips_g <- length(tree$tip.label)
+cat("[INFO] Tree tips:", n_tips_g,
     "  Matched:", sum(dat$label %in% tree$tip.label), "\n")
 
-# ─── Clade colours ────────────────────────────────────────────────────────────
+# ─── Clade colours (canonical palette) ───────────────────────────────────────
 clade_cols <- c(
-  Holozoa               = "#888888", Microsporidia    = "#d32f2f",
-  Cryptomycota          = "#e64a19", Aphelida         = "#f57c00",
-  Blastocladiomycota    = "#fbc02d", Chytridiomycota  = "#558b2f",
-  Neocallimastigomycota = "#00897b", Olpidiomycota    = "#0277bd",
-  Zoopagomycota         = "#4527a0", Kickxellomycotina= "#9c27b0",
-  Entomophthoromycota   = "#c2185b", Basidiobolales   = "#6a1c1c",
-  Mortierellomycota     = "#ef6c00", Mucoromycota     = "#f9a825",
-  Glomeromycota         = "#2e7d32", Basidiomycota    = "#1565c0",
-  Ascomycota            = "#6a1b9a", Unknown          = "#9e9e9e"
+  Ascomycota            = "#e8887a", Basidiomycota        = "#4472c4",
+  Mucoromycota          = "#e07840", Mortierellomycota    = "#f4a8b0",
+  Glomeromycota         = "#8b5e48", Kickxellomycotina    = "#f0a820",
+  Zoopagomycota         = "#c8dc70", Entomophthoromycota  = "#e01010",
+  Basidiobolales        = "#d0b4e0", Olpidiomycota        = "#3668b0",
+  Chytridiomycota       = "#e0d040", Nucleariida          = "#1a2850",
+  Blastocladiomycota    = "#7030a0", Microsporidia        = "#3aab98",
+  Cryptomycota          = "#6aafe6", Aphelida             = "#5c9e3a",
+  Holozoa               = "#b4d0e8", Unknown              = "#9e9e9e"
 )
 
 # ─── MRCA nodes (guide_rooted_Naegrub) ──────────────────────────────────────
@@ -141,12 +159,12 @@ cl      <- function(nm, ord)
                override.aes = list(size = c(2.0, 3.6, 5.0), alpha = 1))
 
 # ─── Base tree ────────────────────────────────────────────────────────────────
-p <- ggtree(tree, layout = "fan", open.angle = 35,
+p <- ggtree(tree, layout = "fan", open.angle = 35, ladderize = FALSE,
             linewidth = 0.20, color = "grey20") %<+% dat +
-  geom_tippoint(aes(color = clade), size = 0.4, alpha = 0.85) +
+  geom_tippoint(aes(color = clade), size = 1.2, alpha = 0.85) +
   scale_color_manual(values = clade_cols, name = NULL,
     guide = guide_legend(ncol = 3, order = 1,
-                         override.aes = list(size = 2.2), title = NULL)) +
+                         override.aes = list(size = 2.8), title = NULL)) +
   theme(legend.position = "bottom",
         legend.text   = element_text(size = 4.8),
         legend.key.size = unit(0.26, "cm"),

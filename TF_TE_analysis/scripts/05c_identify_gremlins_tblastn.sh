@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=gremlin_tblastn
 #SBATCH --partition=normal.168h
-#SBATCH --time=6:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --output=/legserv/Temp/Carlos/EDF-TE/results/TF_TE_analysis/logs/gremlin_tblastn_%j.log

@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=identify_gremlins
 #SBATCH --partition=normal.168h
-#SBATCH --time=3:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --output=/legserv/Temp/Carlos/EDF-TE/results/TF_TE_analysis/logs/identify_gremlins_%j.log

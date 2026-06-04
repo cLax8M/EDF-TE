@@ -17,8 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-TREE_FILE   = Path("/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/"
-                    "ancestral_count/05_count/guide_clean.treefile")
+TREE_FILE   = Path("/legserv/Temp/Carlos/EDF-TE/results/SpeciesTree/final_LG_G_rotated.nwk")
 CLASS_MAT   = Path("/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/"
                     "figures/class_level_matrix.tsv")
 SPECIES_DAT = Path("/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/"
@@ -48,6 +47,74 @@ NAME_MAP = {
 }
 
 TE_ORDER = ["LTR", "DNA", "LINE", "SINE", "Rolling Circle", "Penelope", "Unclassified"]
+
+# ── Manual two-letter code overrides ─────────────────────────────────────
+# Use these when the positional algorithm produces a biologically wrong code.
+MANUAL_CODE_OVERRIDES = {
+    "CR_Rozal1":    "Ra",  # Rozella allomyces: R + a(llomyces) [algorithm gives Rl]
+    "HO_Hydravulg": "Hv",  # Hydra vulgaris: H + v(ulgaris)   [algorithm gives Hr, 'r' is inside genus]
+}
+
+
+def _raw_sp_code(name):
+    """Compute raw (non-deduplicated) 2-letter code."""
+    import re as _re
+    if name in MANUAL_CODE_OVERRIDES:
+        return MANUAL_CODE_OVERRIDES[name]
+    base = name.split("_", 1)[1] if "_" in name else name
+    base = _re.sub(r'[\d_].*', '', base)
+    if len(base) < 2:
+        return (base[0].upper() + "?") if base else "??"
+    if len(base) < 4:
+        return base[0].upper() + base[-1].lower()
+    c1 = base[0].upper()
+    vowels = set('aeiou')
+    c2 = base[3].lower()
+    if c2 in vowels and len(base) > 4:
+        c2 = base[4].lower()
+    return f"{c1}{c2}"
+
+
+def compute_tip_codes(ordered_names):
+    """
+    Assign unique 2-letter codes to species in tree order (bottom→top).
+    - Manual overrides applied first.
+    - For duplicate codes, tries alternative letter positions until unique.
+    - First occurrence in tree order keeps the natural code.
+    """
+    import re as _re
+    used = set()
+    final = {}
+    for name in ordered_names:
+        raw = _raw_sp_code(name)
+        if raw not in used:
+            final[name] = raw
+            used.add(raw)
+        else:
+            base = name.split("_", 1)[1] if "_" in name else name
+            base = _re.sub(r'[\d_].*', '', base)
+            c1 = base[0].upper() if base else "?"
+            assigned = False
+            for i in range(1, len(base)):
+                candidate = f"{c1}{base[i].lower()}"
+                if candidate not in used:
+                    final[name] = candidate
+                    used.add(candidate)
+                    assigned = True
+                    break
+            if not assigned:
+                # Try characters from the full species label
+                full = (name.split("_", 1)[1] if "_" in name else name).lower()
+                for i in range(1, len(full)):
+                    candidate = f"{c1}{full[i]}"
+                    if candidate not in used:
+                        final[name] = candidate
+                        used.add(candidate)
+                        assigned = True
+                        break
+            if not assigned:
+                final[name] = raw  # fallback: keep original (may still duplicate)
+    return final
 
 
 def get_clade(species_name):
@@ -178,12 +245,30 @@ def main():
     # Load tree
     tree_str = TREE_FILE.read_text().strip()
     root = parse_newick(tree_str)
-    # Phylogram with real branch lengths (amino-acid substitutions / site)
-    assign_phylogram_positions(root, [0], x=0.0)
-    max_d = get_max_x(root)
+
+    # ── Rotate nodes to match desired clade display order ────────────────────
+    # bottom-to-top: index 0 = bottom (first leaf, lowest y); last = top
+    _DESIRED_CLADE_ORDER = ["HO","NU","AP","CR","MI","BL","NE","CH","OL","BS","ZO","EN","KX","MO","GL","MU","AS","BA"]
+    _clade_rank = {cl: i for i, cl in enumerate(_DESIRED_CLADE_ORDER)}
+    def _rotate_to_order(node):
+        if not node.children:
+            return
+        for c in node.children:
+            _rotate_to_order(c)
+        def _min_idx(n):
+            lv = get_leaves(n)
+            idxs = [_clade_rank[l.name[:2]] for l in lv if l.name[:2] in _clade_rank]
+            return min(idxs) if idxs else len(_DESIRED_CLADE_ORDER)
+        node.children.sort(key=_min_idx)
+    _rotate_to_order(root)
+    print("[INFO] Tree rotated to match desired clade order")
+
+    # Cladogram: all tips at the same x position (equal branch lengths)
+    max_d = get_max_depth(root)
+    assign_cladogram_positions(root, [0], depth=0, max_depth=max_d)
     leaves = get_leaves(root)
     n_tips = len(leaves)
-    print(f"[INFO] Tree has {n_tips} tips, max depth {max_d:.3f} aa subs/site")
+    print(f"[INFO] Tree has {n_tips} tips, max depth {max_d} levels")
 
     # Helper: look up data using tree tip name or mapped name
     def data_name(tree_tip):
@@ -230,52 +315,30 @@ def main():
 
     # ── Draw cladogram ───────────────────────────────────────────────────
     tip_pos = draw_cladogram(ax_tree, root)
-    ax_tree.set_xlim(-max_d * 0.02, max_d * 1.10)
+    ax_tree.set_xlim(-max_d * 0.02, max_d * 1.12)
     ax_tree.set_ylim(-0.5, n_tips - 0.5)
-    ax_tree.invert_yaxis()
     for sp in ax_tree.spines.values():
         sp.set_visible(False)
     ax_tree.set_xticks([])
     ax_tree.set_yticks([])
 
     # ── 2-letter italic species code at each tip (e.g. Sc = Saccharomyces cerevisiae) ──
-    def two_letter_code(name):
-        # name format: XX_Genspe[1] -> take char 3 (G of Gen) + char 6 (s of spe)
-        base = name.split("_", 1)[1] if "_" in name else name
-        c1 = base[0].upper() if len(base) >= 1 else ""
-        c2 = base[3].lower() if len(base) >= 4 else ""
-        return f"{c1}{c2}"
+    # Pre-compute all codes with deduplication (tree order: bottom→top)
+    tip_codes = compute_tip_codes([leaf.name for leaf in leaves])
 
     for leaf in leaves:
         y = tip_pos[leaf.name]
-        code = two_letter_code(leaf.name)
+        code = tip_codes[leaf.name]
         ax_tree.text(max_d * 1.005, y, code, fontsize=4.5,
                      ha="left", va="center", style="italic",
                      fontweight="bold", color="#222")
 
-    # ── Scale bar at the bottom of the tree panel (aa subs/site) ───────────────
-    # Choose a "nice" round bar length ~20-25% of the tree depth.
-    target = max_d * 0.20
-    nice_steps = [0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5, 1.0, 2.0]
-    bar_len = min(nice_steps, key=lambda s: abs(s - target))
-    y_bar = n_tips - 0.5 + 0.6
-    ax_tree.set_ylim(y_bar + 1.4, -0.5)  # extend to fit the scale
-    x0 = 0.0
-    x1 = bar_len
-    ax_tree.plot([x0, x1], [y_bar, y_bar], color="black", linewidth=1.0,
-                 clip_on=False)
-    # tick caps
-    for x in (x0, x1):
-        ax_tree.plot([x, x], [y_bar - 0.15, y_bar + 0.15], color="black",
-                     linewidth=0.8, clip_on=False)
-    ax_tree.text((x0 + x1) / 2, y_bar + 0.55, f"{bar_len:g} aa subs / site",
-                 fontsize=6.5, ha="center", va="top", color="#222",
-                 style="italic")
+    # ── Scale bar removed (cladogram has no branch length units) ────────────────
+    ax_tree.set_ylim(-0.5, n_tips - 0.5)
 
     # ── Clade color strip ────────────────────────────────────────────────
     ax_clade.set_xlim(0, 1)
     ax_clade.set_ylim(-0.5, n_tips - 0.5)
-    ax_clade.invert_yaxis()
     ax_clade.axis("off")
     for leaf in leaves:
         y = tip_pos[leaf.name]
@@ -297,12 +360,13 @@ def main():
                 vals[t] = cm.get(t, 0) * te_total
             bar_data[sp] = vals
             total = sum(vals.values())
-            if total > max_te:
+            # Exclude HO/NU outgroups from axis-scale calculation
+            # (animal genomes have 40-80% TE and would dwarf fungal bars)
+            if get_clade(sp) not in ("HO", "NU") and total > max_te:
                 max_te = total
 
     ax_bars.set_xlim(0, min(max_te * 1.1, 60))
     ax_bars.set_ylim(-0.5, n_tips - 0.5)
-    ax_bars.invert_yaxis()
     ax_bars.set_xlabel("% genome", fontsize=8)
     ax_bars.spines["top"].set_visible(False)
     ax_bars.spines["right"].set_visible(False)
@@ -330,7 +394,6 @@ def main():
 
     # ── Shannon bubbles (narrower panel) ─────────────────────────────────
     ax_shan.set_ylim(-0.5, n_tips - 0.5)
-    ax_shan.invert_yaxis()
     ax_shan.set_xlabel("Shannon H'", fontsize=7)
     ax_shan.spines["top"].set_visible(False)
     ax_shan.spines["right"].set_visible(False)
@@ -359,7 +422,6 @@ def main():
 
     # ── Recency Index bubbles ────────────────────────────────────────────
     ax_ri.set_ylim(-0.5, n_tips - 0.5)
-    ax_ri.invert_yaxis()
     ax_ri.set_xlabel("Recency (RI)", fontsize=7)
     ax_ri.spines["top"].set_visible(False)
     ax_ri.spines["right"].set_visible(False)

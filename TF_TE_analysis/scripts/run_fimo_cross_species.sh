@@ -28,7 +28,6 @@
 #SBATCH --array=1-236
 #SBATCH --output=/data/carlos/EDF-TE/logs/fimo_cross/fimo_%A_%a.log
 #SBATCH --error=/data/carlos/EDF-TE/logs/fimo_cross/fimo_%A_%a.err
-#SBATCH --time=24:00:00
 
 set -euo pipefail
 

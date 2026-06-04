@@ -6,7 +6,7 @@ Produces:
   2. Scatter: synteny ratio vs TE content (colored by clade)
 
 Data sources:
-  - perspecies_synteny.tsv    (mean_r_intra per species)
+  - perspecies_synteny.tsv    (mean_r_corrected per species)
   - figure_species_data.tsv   (pct_TE_total per species)
 """
 from pathlib import Path
@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-SYNTENY_TSV  = Path("/legserv/Temp/Carlos/EDF-TE/results/Synteny/perspecies_synteny.tsv")
+SYNTENY_TSV  = Path("/legserv/Temp/Carlos/EDF-TE/results/Synteny_guide_corrected/perspecies_corrected_synteny.tsv")
 SPECIES_DAT  = Path("/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/figure_species_data.tsv")
 OUTDIR       = Path("/legserv/Temp/Carlos/EDF-TE/results/Synteny/figures_summary")
 
@@ -68,7 +68,7 @@ def main():
     present_clades = [c for c in CLADE_ORDER if c in df_plot["clade"].values]
 
     fig, ax = plt.subplots(figsize=(12, 5))
-    box_data = [df_plot[df_plot["clade"] == c]["mean_r_intra"].dropna().values
+    box_data = [df_plot[df_plot["clade"] == c]["mean_r_corrected"].dropna().values
                 for c in present_clades]
     box_labels = [CLADE_NAMES.get(c, c) for c in present_clades]
     box_colors = [CLADE_COLORS.get(c, "#ddd") for c in present_clades]
@@ -93,8 +93,8 @@ def main():
                 ha="center", va="top", fontsize=6, color="#555")
 
     ax.set_xticklabels(box_labels, rotation=45, ha="right", fontsize=8)
-    ax.set_ylabel("Mean intra-clade synteny ratio", fontsize=10)
-    ax.set_title("TE synteny conservation by fungal clade", fontsize=12)
+    ax.set_ylabel("Mean intra-clade pairwise synteny ratio (corrected)", fontsize=10)
+    ax.set_title("TE synteny conservation by fungal clade (patristic-corrected)", fontsize=12)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
@@ -106,7 +106,7 @@ def main():
     print(f"[SAVED] {out1}")
 
     # ── Figure 2: Synteny vs TE content scatter ──────────────────────────
-    df_scatter = df_plot.dropna(subset=["pct_TE", "mean_r_intra"])
+    df_scatter = df_plot.dropna(subset=["pct_TE", "mean_r_corrected"])
     print(f"[INFO] {len(df_scatter)} species for scatter plot")
 
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -115,14 +115,14 @@ def main():
         sub = df_scatter[df_scatter["clade"] == clade]
         if len(sub) == 0:
             continue
-        ax.scatter(sub["pct_TE"], sub["mean_r_intra"],
+        ax.scatter(sub["pct_TE"], sub["mean_r_corrected"],
                   c=CLADE_COLORS.get(clade, "#ddd"),
                   label=CLADE_NAMES.get(clade, clade),
                   s=25, alpha=0.7, edgecolor="k", linewidth=0.3)
 
     # Regression line
     x = df_scatter["pct_TE"].values
-    y = df_scatter["mean_r_intra"].values
+    y = df_scatter["mean_r_corrected"].values
     mask = np.isfinite(x) & np.isfinite(y)
     if mask.sum() > 10:
         slope, intercept, r, p, se = stats.linregress(x[mask], y[mask])
@@ -143,7 +143,7 @@ def main():
                      edgecolor="gray", alpha=0.8))
 
     ax.set_xlabel("TE content (% genome)", fontsize=10)
-    ax.set_ylabel("Mean intra-clade synteny ratio", fontsize=10)
+    ax.set_ylabel("Mean intra-clade pairwise synteny ratio (corrected)", fontsize=10)
     ax.set_title("TE synteny conservation vs TE content", fontsize=12)
     ax.legend(fontsize=6, loc="lower right", ncol=2, framealpha=0.9)
     ax.spines["top"].set_visible(False)
@@ -160,7 +160,7 @@ def main():
     print(f"\n{'='*50}")
     print("Synteny summary by clade:")
     for c in present_clades:
-        sub = df_plot[df_plot["clade"] == c]["mean_r_intra"]
+        sub = df_plot[df_plot["clade"] == c]["mean_r_corrected"]
         print(f"  {CLADE_NAMES.get(c,c):25s}  n={len(sub):3d}  "
               f"median={sub.median():.3f}  mean={sub.mean():.3f}")
 

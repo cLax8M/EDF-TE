@@ -72,8 +72,9 @@ def plot_bar_jockey(df: pd.DataFrame, outdir: Path):
         print("[WARN] No LINE/I-Jockey × HMGb3 data")
         return
 
-    # Remove species with 0 elements
-    sub = sub[sub["n_elements"] > 0].copy()
+    # Remove species with < 5 elements (fractions from n<5 are unreliable)
+    MIN_N = 5
+    sub = sub[sub["n_elements"] >= MIN_N].copy()
     sub = sub.sort_values("fraction_with_motif", ascending=True)
 
     colors = [CLADE_COLORS.get(clade_of(sp), DEFAULT_COLOR)

@@ -2,7 +2,6 @@
 #SBATCH --job-name=treewas_prep
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=4:00:00
 #SBATCH --output=/data/carlos/EDF-TE/EDF-TE/logs/treewas_prep_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/EDF-TE/logs/treewas_prep_%j.err
 #SBATCH --partition=normal.168h

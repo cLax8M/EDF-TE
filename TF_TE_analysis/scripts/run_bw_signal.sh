@@ -2,7 +2,6 @@
 #SBATCH --job-name=bw_TE_signal
 #SBATCH --output=/data/carlos/EDF-TE/logs/bw_TE_signal_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/logs/bw_TE_signal_%j.err
-#SBATCH --time=02:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=4
 

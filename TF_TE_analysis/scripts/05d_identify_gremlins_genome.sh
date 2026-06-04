@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=gremlin_genome
 #SBATCH --partition=normal.168h
-#SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=48G
 #SBATCH --output=/legserv/Temp/Carlos/EDF-TE/results/TF_TE_analysis/logs/gremlin_genome_%A_%a.log

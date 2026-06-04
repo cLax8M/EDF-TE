@@ -204,8 +204,9 @@ def main():
                         else:
                             # non-TE domain → host domain
                             dname = str(row.get("domain_name", "")).strip()
-                            gene_host_dom.append(dname)
-                            host_doms_all.append(dname)
+                            if dname and dname not in ("", "nan", r"\N", "-"):
+                                gene_host_dom.append(dname)
+                                host_doms_all.append(dname)
                     arch_per_gene.append(architecture_string(gene_te_sfs, gene_host_dom))
 
                 dominant_te_sf    = most_common(te_sfs_all)

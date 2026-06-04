@@ -2,7 +2,6 @@
 #SBATCH --job-name=treewas_annot
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G
-#SBATCH --time=1:00:00
 #SBATCH --output=/data/carlos/EDF-TE/EDF-TE/logs/treewas_annot_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/EDF-TE/logs/treewas_annot_%j.err
 #SBATCH --partition=normal.168h

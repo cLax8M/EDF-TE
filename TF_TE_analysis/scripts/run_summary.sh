@@ -2,7 +2,6 @@
 #SBATCH --job-name=TF_TE_summary
 #SBATCH --output=/data/carlos/EDF-TE/logs/TF_TE_summary_%j.out
 #SBATCH --error=/data/carlos/EDF-TE/logs/TF_TE_summary_%j.err
-#SBATCH --time=01:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=2
 

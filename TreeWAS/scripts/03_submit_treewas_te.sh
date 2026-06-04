@@ -3,7 +3,6 @@
 #SBATCH --array=0-9
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
-#SBATCH --time=12:00:00
 #SBATCH --output=/data/carlos/EDF-TE/EDF-TE/logs/treewas_te_%A_%a.out
 #SBATCH --error=/data/carlos/EDF-TE/EDF-TE/logs/treewas_te_%A_%a.err
 #SBATCH --partition=normal.168h

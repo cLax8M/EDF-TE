@@ -188,37 +188,64 @@ Hall, 2010) in 100 independent rounds per species, with scaffolds preserved as l
 constraints (`-chrom` flag).  Each replicate used a fixed per-replicate random seed.
 The mean over 100 replicates (the null expectation, `null_mean_collinear`) was computed for each species pair.
 
-#### 4.5 Corrected synteny ratio
+#### 4.5 Patristic-distance-corrected synteny ratio
 
-The raw synteny score measures gene-order conservation above random expectation,
-normalised by the total number of testable adjacent-gene slots.  For each species pair
-(i, j), the score is computed as:
+Even after subtracting the randomisation baseline (§4.4), raw pairwise synteny scores
+still reflect evolutionary divergence: species pairs that diverged longer ago share fewer
+collinear gene arrangements simply from neutral drift, independently of any TE-driven
+rearrangement.  To remove this divergence-time confound, synteny scores were corrected
+against patristic distances extracted from the species guide tree (Section 2), following
+a three-step procedure implemented in `Synteny/scripts/09_patristic_correction.py`.
 
-`score = (observed collinear pairs − null mean) / total adjacent-gene slots`
+**Step 1 — raw score per pair.**  For each pairwise comparison (i, j), the baseline
+null-corrected score is:
 
-that is, the number of collinear ortholog pairs found in the real data minus the average
-number found in 100 randomised replicates, divided by the total number of consecutive
-ortholog pairs tested in species i.  Subtracting the null mean corrects for the baseline
-level of gene-order conservation attributable to chance co-localisation of unlinked
-orthologs; dividing by the total slots normalises for scaffold fragmentation, ensuring
-that species with highly fragmented assemblies (where fewer adjacent-gene pairs can be
-tested) are not artificially penalised.  Negative values — which can arise by chance in
-highly fragmented assemblies — were set to zero.
+`raw_score = (observed_collinear_pairs − null_mean_collinear) / total_adjacent_slots`
 
-Scores were then rescaled to the range [0, 1] within each clade by dividing by the
-maximum observed score in that clade:
+This is the number of collinear ortholog pairs in the real genome minus the mean number
+recovered from 100 randomised gene-position replicates, divided by the total number of
+consecutive ortholog-pair slots tested in that comparison.  Subtracting the null mean
+removes the random co-localisation baseline; dividing by total slots normalises for
+assembly fragmentation (highly fragmented assemblies expose fewer adjacent-gene slots
+and would otherwise score artificially low).  Negative values — which arise by chance
+in very fragmented assemblies — were set to zero.
 
-`normalised score = score / maximum score in the clade`
+**Step 2 — patristic distance and polynomial regression.**  The patristic distance
+d_ij between species i and j was computed as the sum of branch lengths along the path
+connecting the two tips in the rooted guide tree (Bio.Phylo, Cock et al., 2009).  Within
+each clade, a second-degree polynomial was fitted to the scatter of raw_score against
+d_ij across all species pairs in that clade:
 
-This within-clade rescaling is necessary because absolute synteny scores scale with
-divergence time: closely related species will always show higher scores than distantly
-related ones regardless of true synteny retention.  A normalised score of 1.0 indicates
-the most synteny-conserved pair within the clade; a value near 0 indicates gene-order
-conservation indistinguishable from the random background.  Scores from different clades
-should not be compared directly.
-A per-species ranking by distance-corrected synteny ratio is shown in Fig. S1B.  Per-clade
-boxplots of synteny ratios are shown in Fig. S1C
-(`Synteny_guide_corrected/figures/synteny_ratio_by_clade_box.pdf`).
+`expected_raw(d_ij) = a × d_ij² + b × d_ij + c`
+
+The polynomial captures the empirical decay of synteny with divergence time within the
+clade.  The corrected score is then the residual — how much more or less synteny the
+pair retains than expected at its particular divergence level:
+
+`corrected_score = raw_score − expected_raw(d_ij)`
+
+A positive residual means the pair retains more collinear gene order than typical for
+two species that diverged as long ago as d_ij suggests; a negative residual means gene
+order has eroded faster than expected, consistent with increased rearrangement or TE
+activity.
+
+**Step 3 — within-clade normalisation.**  Residuals were linearly rescaled to [0, 1]
+within each clade:
+
+`normalised_score = (corrected_score − min_clade) / (max_clade − min_clade)`
+
+This makes scores comparable across species within a clade while acknowledging that
+clades with very different divergence ranges cannot be directly compared on the same
+axis.  A normalised score of 1.0 corresponds to the most synteny-conserved pair in the
+clade after accounting for divergence; a value near 0 indicates retention close to or
+below the divergence-adjusted expectation.
+
+A per-species ranking by patristic-distance-corrected synteny ratio is shown in
+Fig. S1B.  Per-clade boxplots of corrected synteny ratios are shown in Fig. S1C
+(`Synteny_guide_corrected/figures/synteny_ratio_by_clade_box.pdf`).  Column names in
+the source data table (Fig1D_synteny) reflect the four quantities computed above:
+`observed_collinear_pairs`, `null_mean_collinear`, `total_adjacent_slots`,
+`corrected_score`, and `normalised_score`.
 
 #### 4.6 Circos visualisation of selected pairs
 

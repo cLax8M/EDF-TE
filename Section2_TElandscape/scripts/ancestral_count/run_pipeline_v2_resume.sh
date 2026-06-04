@@ -3,7 +3,6 @@
 #SBATCH --partition=normal.168h
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=12:00:00
 #SBATCH --exclude=LEGcompute1
 #SBATCH --output=/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/ancestral_count/logs/pipeline_v2_resume_%j.out
 #SBATCH --error=/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape/ancestral_count/logs/pipeline_v2_resume_%j.err

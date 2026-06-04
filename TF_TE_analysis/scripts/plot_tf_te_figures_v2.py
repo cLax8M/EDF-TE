@@ -216,7 +216,7 @@ def plot_bubble_v2(stats: pd.DataFrame):
     color = TF family, annotate top 10 significant TFs.
     This avoids the p=0/p>0 two-cluster problem.
     """
-    fig, ax = plt.subplots(figsize=(9, 7))
+    fig, ax = plt.subplots(figsize=(11, 6))
 
     genomic_te = stats["genomic_TE_frac"].iloc[0]
     added = set()
@@ -325,6 +325,13 @@ def plot_fimo_heatmap_5tf(fimo: pd.DataFrame):
         for te, val in series.items():
             mat.loc[te, tf_label] = val
 
+    # Cap inf values at 7.0 (inf arises when all TE copies have the motif
+    # and no background copies do; displayed as ">7" in cell annotations)
+    INF_CAP = 7.0
+    inf_mask = np.isinf(mat.values)
+    mat = mat.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    mat[inf_mask] = INF_CAP
+
     # Drop rows where all are 0
     mat = mat[(mat != 0).any(axis=1)]
     if mat.empty:
@@ -349,12 +356,12 @@ def plot_fimo_heatmap_5tf(fimo: pd.DataFrame):
     im = ax.imshow(mat.values, aspect="auto", cmap="Reds",
                    vmin=0, vmax=min(vmax, 7))
 
-    # Cell annotations
+    # Cell annotations ("≥7" indicates capped inf values)
     for i in range(mat.shape[0]):
         for j in range(mat.shape[1]):
             v = mat.iloc[i, j]
             if v > 0:
-                txt = f"{v:.1f}"
+                txt = "≥7" if v >= INF_CAP else f"{v:.1f}"
                 ax.text(j, i, txt, ha="center", va="center",
                         fontsize=7, color="white" if v > vmax * 0.55 else "#333333",
                         fontweight="bold" if v > 3 else "normal")

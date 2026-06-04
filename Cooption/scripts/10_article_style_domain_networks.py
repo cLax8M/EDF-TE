@@ -177,12 +177,14 @@ def export_graph_tables(G: nx.Graph, out_prefix: str) -> None:
     edges = []
     for u, v, a in G.edges(data=True):
         edges.append({"domain_u": u, "domain_v": v, "weight": int(a.get("weight", 0))})
-    pd.DataFrame(nodes).sort_values(["count", "domain"], ascending=[False, True]).to_csv(
-        out_prefix + ".nodes.tsv", sep="\t", index=False
-    )
-    pd.DataFrame(edges).sort_values(["weight", "domain_u", "domain_v"], ascending=[False, True, True]).to_csv(
-        out_prefix + ".edges.tsv", sep="\t", index=False
-    )
+    ndf = pd.DataFrame(nodes)
+    if not ndf.empty:
+        ndf = ndf.sort_values(["count", "domain"], ascending=[False, True])
+    ndf.to_csv(out_prefix + ".nodes.tsv", sep="\t", index=False)
+    edf = pd.DataFrame(edges)
+    if not edf.empty:
+        edf = edf.sort_values(["weight", "domain_u", "domain_v"], ascending=[False, True, True])
+    edf.to_csv(out_prefix + ".edges.tsv", sep="\t", index=False)
 
 
 def draw_community_halos(ax, G: nx.Graph, pos: Dict[str, Tuple[float, float]], comm_to_color: Dict[int, tuple]) -> None:

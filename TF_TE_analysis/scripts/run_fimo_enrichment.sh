@@ -2,7 +2,6 @@
 #SBATCH --job-name=fimo_TE
 #SBATCH --output=/data/carlos/EDF-TE/logs/fimo_TE_%A_%a.out
 #SBATCH --error=/data/carlos/EDF-TE/logs/fimo_TE_%A_%a.err
-#SBATCH --time=04:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=4
 #SBATCH --array=0-34%6     # 35 TE classes (0-34), max 6 simultaneous

@@ -14,7 +14,6 @@
 #SBATCH --mem=16G
 #SBATCH --output=/data/carlos/EDF-TE/logs/fimo_cross/fimo_figures_%j.log
 #SBATCH --error=/data/carlos/EDF-TE/logs/fimo_cross/fimo_figures_%j.err
-#SBATCH --time=2:00:00
 
 set -euo pipefail
 

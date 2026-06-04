@@ -45,6 +45,8 @@ PHYLUM = {
 }
 
 MNASE6 = {"MU_Rhimi59","AS_Usnflo1","BA_Mereb1","BA_Mrafri1","BA_Rhoto","BL_Catan2"}
+# 4 in-vivo native chromatin tracks (MNase / MAINE / ATAC)
+MNASE_INVIVO = {"MU_Rhimi59","AS_Ncrass2","AS_Bcine1","BA_Mereb1"}
 
 CLASS_ORDER = ["LTR","LINE","SINE","DNA","RC","Satellite","Simple","Low",
                "rRNA","tRNA","Unknown"]
@@ -288,6 +290,8 @@ def main():
     run_subgroup("FLrecent_allSP", mode="FL_recent", sp_filter=None)
     # 3) ALL TEs, only the 6 MNase species
     run_subgroup("ALL_MNASE6",     mode="ALL",       sp_filter=MNASE6)
+    # 3b) ALL TEs, only the 4 in-vivo native chromatin species
+    run_subgroup("ALL_MNASE_INVIVO", mode="ALL",     sp_filter=MNASE_INVIVO)
     # 4) ALL TEs, only Rhizopus
     run_subgroup("ALL_RHIMI59",    mode="ALL",       sp_filter={"MU_Rhimi59"})
 

@@ -58,8 +58,6 @@ def gene_aliases(token: str) -> Set[str]:
     out.add(t.replace('"', ""))
     if "." in t:
         out.add(t.rsplit(".", 1)[0])
-    for m in re.findall(r"\d+", t):
-        out.add(m)
     return {x for x in out if x}
 
 
