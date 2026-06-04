@@ -86,12 +86,12 @@ removing columns with more than 20 % gaps.  The trimmed alignments were concaten
 and partitioned by gene.
 
 A first-pass guide tree under the LG+F+G4 model (IQ-TREE 2.3.6, `-B 1000`) was
-computed to seed the final analysis.  The definitive tree was inferred under the
-LG+C60+F+G4 mixture model (`-m LG+C60+F+G4 -B 1000 -bnni --seed 12345`), which
-uses 60 empirical amino acid frequency profiles (C60) estimated from a large database
-of protein families to account for across-site compositional heterogeneity.  The
-`-bnni` flag enables branch-length optimisation of each bootstrap tree.  The tree was
-rooted on the Holozoa clade using midpoint rooting followed by manual inspection.
+computed to seed the final analysis.  The definitive species tree was inferred under
+the **LG+G4 model** (IQ-TREE 2.3.6, `-B 1000` UFBoot; 1,000 ultrafast bootstrap
+replicates; gamma shape parameter α = 0.824565), which provides a well-calibrated
+and computationally tractable fit for concatenated supermatrices of this size.  The
+tree was rooted on the Holozoa clade using midpoint rooting followed by manual
+inspection.
 
 ---
 
@@ -205,45 +205,52 @@ visualised on the top-30 scaffolds per species using Circos v0.67 (Krzywinski *e
 
 ### 5. TE annotation with EarlGrey
 
-Transposable elements were annotated in all 320 genomes with EarlGrey v1.6
-(`section2_te_landscape/01_te_annotation.sh`), which orchestrates the following
-sequential sub-modules:
+Each of the 320 genomes was annotated for transposable elements using EarlGrey v1.6.
+EarlGrey orchestrates a modular pipeline combining de novo repeat discovery,
+structural filtering, database-guided classification, and genome masking; full details
+of each step are given in the subsections below.
 
-#### 5.1 De novo consensus discovery — RepeatModeler2 v2.0.5
+#### 5.1 De novo consensus library construction
 
-RepeatModeler2 was run in RECON + RepeatScout mode with NCBI BLAST+ as the search
-engine (`-engine ncbi`):
+For each genome, putative TE consensus sequences were generated using the
+`earlGreyLibConstruct` module of EarlGrey v1.6, configured with Dfam 3.7 curated
+elements as the reference database, using default settings.  Briefly, RepeatModeler2
+v2.0.5 was used to identify repetitive elements across each genome assembly, combining
+the RECON + RepeatScout pipeline for tandem-masked sequences with structural LTR
+discovery via LTRharvest (GenomeTools v1.6.2) and LTR_retriever v2.9.0.
 
-```
-RepeatModeler -database <species_db> -engine ncbi -pa 16 -LTRStruct
-```
-
-`-LTRStruct` activates the LTRharvest + LTR_retriever structural LTR discovery
-pipeline.  LTRharvest (GenomeTools v1.6.2) was invoked with the following parameters:
-`--similar 85 --vic 10 --seed 20 --seqids yes`.  LTR_retriever v2.9.0 filtered
-LTRharvest candidates requiring: LTR length 100–7,000 bp; TSD length 4–6 bp; PBS
-and PPT motifs when detectable; and identity between 5′ and 3′ LTR ≥ 60 %.
-RepeatScout v1.0.6 was used with default parameters; tandem arrays detected by
-Tandem Repeat Finder v4.09 (TRF; `2 7 7 80 10 50 500 -f -d -m -h`) were excluded
-from the RepeatScout output.  RECON v1.08 multi-locus assembly was applied to
-RepeatScout seeds with minimum element count ≥ 8 (RECON `minnoels = 8`).
+All per-species consensus sequences were combined into a single multi-FASTA file.
+To generate a clustered non-redundant library, we employed a scalable cascaded
+clustering approach using MMseqs2 v14.7564 `easy-cluster` with
+`--min-seq-id 0.8 -c 0.8 --cov-mode 1 --cluster-reassign`, retaining the
+representative sequence for each cluster.
 
 #### 5.2 Structural and quality filtering
 
-After initial consensus generation, EarlGrey applied the following sequential filters:
+After consensus generation, EarlGrey applied the following sequential filters:
 - Consensi shorter than 80 bp or longer than 40,000 bp were discarded.
 - For putative DNA transposons: terminal inverted repeats (TIRs) were verified with
   IRScan (EarlGrey internal); consensi lacking TIRs of length ≥ 10 bp with identity
   ≥ 70 % were reclassified as Unknown.
 - For putative LTR retrotransposons: LTR boundary integrity was verified by
   LTR_retriever v2.9.0; consensi failing the structural filter were reclassified.
-- Consensi with > 50 % simple or low-complexity sequence (identified by RepeatMasker
-  `-nolow` scoring) were removed.
+- Consensi with > 50 % simple or low-complexity sequence were removed.
 
-#### 5.3 Phylogenetic classification — Dfam nhmmer search
+#### 5.3 Host-gene filtering
 
-Each consensus was classified against the Dfam 3.7 database (released July 2023;
-20,462 HMM profiles) using nhmmer (HMMER 3.3.2):
+To identify and remove putative host genes that may have been captured in the TE
+library, open reading frames were identified in all consensus sequences and matched
+against the RefSeq non-redundant protein database (NCBI NR, release 221, December
+2023) using DIAMOND BLASTX v2.1.8 (`--more-sensitive -e 1e-5 --id 40 -k 1`).
+Sequences with a RefSeq protein hit (identity ≥ 40 %, e-value ≤ 10⁻⁵) that did not
+also match known TE proteins (i.e. the best RefSeq hit annotation did not contain
+the terms *transposon*, *transposase*, *integrase*, *reverse transcriptase*, *capsid*,
+or *gag*) were classified as host-derived and removed from the TE library.
+
+#### 5.4 Phylogenetic classification — Dfam nhmmer search
+
+Each consensus was classified against the Dfam 3.7 database (20,462 HMM profiles)
+using nhmmer (HMMER 3.3.2):
 
 ```
 nhmmer --cpu 8 -E 1e-5 --tblout <out.tbl> Dfam3.7.hmm <consensi.fa>
@@ -252,9 +259,10 @@ nhmmer --cpu 8 -E 1e-5 --tblout <out.tbl> Dfam3.7.hmm <consensi.fa>
 The best-scoring Dfam hit determined the superfamily-level classification.  Consensi
 with no Dfam hit (E > 10⁻⁵) were passed to RepeatClassifier (RepeatModeler2 v2.0.5)
 for automated kmer-based assignment.  Consensi that remained unclassified after both
-steps were labelled `Unknown`.
+steps were labelled `Unknown`.  TE superfamily nomenclature follows Wicker et al.
+(2007).
 
-#### 5.4 RepeatMasker genome annotation
+#### 5.5 Genome annotation with RepeatMasker
 
 The curated per-species consensus library was used to annotate the repeat content of
 the corresponding genome assembly with RepeatMasker 4.1.5:
@@ -266,29 +274,9 @@ RepeatMasker -lib <species_library.fa> -pa 16 -s -dir <out_dir> \
 
 `-s` applies the slow/sensitive search mode; `-a` produces the alignment (`.align`)
 output file required for Kimura divergence computation (Section 6); `-nolow` excludes
-the scoring of simple repeats and low-complexity sequences from masking; `-norna`
-excludes small RNA genes.  The output `.filteredRepeats.bed` file records one BED
-line per annotated TE copy (chromosome, start, end, family, score, strand).
-
-#### 5.5 Cross-species library construction and host-gene filtering
-
-After per-species annotation, all consensus sequences from all 320 species were
-concatenated into a joint FASTA file (headers format: `SPECIES__family#class`).
-Within-library redundancy was removed by MMseqs2 v14.7564:
-
-```
-mmseqs easy-cluster <all_consensi.fa> <clusterDB> /tmp \
-  --min-seq-id 0.80 -c 0.80 --cov-mode 1 -s 7 --threads 16
-```
-
-Cluster representatives were retained.  Each representative was then compared to
-the RefSeq non-redundant protein database (NCBI NR, release 221, December 2023)
-by DIAMOND BLASTX v2.1.8 (`--more-sensitive -e 1e-5 --id 40 -k 1`).  Sequences
-with a RefSeq hit (identity ≥ 40 %, e-value ≤ 10⁻⁵) not matching any known TE
-protein (i.e. the RefSeq hit annotation did not contain the terms "transposon",
-"transposase", "integrase", "reverse transcriptase", "capsid", or "gag") were
-classified as host-derived and permanently removed from the TE library.  TE
-superfamily nomenclature follows Wicker et al. (2007).
+simple repeats and low-complexity sequences from masking; `-norna` excludes small RNA
+genes.  The output `.filteredRepeats.bed` file records one BED line per annotated TE
+copy (chromosome, start, end, family, score, strand).
 
 All EarlGrey SLURM jobs were submitted to partition `normal.168h` with 16 CPUs and
 64 GB RAM per species.  Two Microsporidia genomes (MI_Encro1, MI_Ordco1) returned
@@ -1114,7 +1102,7 @@ WGD-positive species; BH-corrected FDR 5 % across superfamilies.
 
 The normalised rate $R_n$ (§13.3) was plotted on the species tree as a heat-map
 column, using the same colour scale across all nodes.  For visualisation, ancestral
-node rates were projected onto the LG+C60+F+G4 ML species tree with ete3 v3.1.3
+node rates were projected onto the LG+G4 ML species tree with ete3 v3.1.3
 (`NodeStyle` colouring, `TreeStyle` rectangular layout).  Duplication-peak nodes
 (Robust Z ≥ 1.5, §13.3) are highlighted with a filled circle; the size is
 proportional to $Z_n$.
@@ -1148,7 +1136,7 @@ TE family F), the anomaly score was:
 $$a = d_{\text{expected}} - d_{\text{observed}}$$
 
 where $d_{\text{expected}}$ is the species-tree patristic distance (from the
-LG+C60+F+G4 ML tree, in expected substitutions per site) between A and B, and
+LG+G4 ML tree, in expected substitutions per site) between A and B, and
 $d_{\text{observed}} = 1 - p_{\text{ident}}/100$.  HTT events were retained if
 $a \geq 0.10$ (i.e. the TE copies are at least 10 % more similar than expected
 from neutral host-genome divergence).
@@ -1210,7 +1198,7 @@ Cytoscape 3.10.2 with the yFiles Organic layout.
 ### Figure 1. Genomic diversity and synteny across 320 EDF genomes
 
 **(A)** Circular maximum-likelihood phylogenetic tree of all 320 genomes (Section 2;
-LG+C60+F+G4 model, IQ-TREE 2; `Section2_TElandscape/figures/circular_tree_v4.4.pdf`).
+LG+G4 model, IQ-TREE 2; `Section2_TElandscape/figures/circular_tree_v4.4.pdf`).
 Tips are coloured by clade following the 18-clade colour scheme; bootstrap support
 ≥ 95 is indicated at internal nodes.  The 18 clade abbreviations are labelled on the
 outer ring.
