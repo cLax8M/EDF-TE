@@ -269,14 +269,32 @@ def build_fig2d(writer):
 
 
 def build_fig3a(writer):
-    """Fig3A_dnmt: DNMT presence/absence per species."""
+    """Fig3A_dnmt: DNMT presence/absence per species + TE-embedded DNMT screening."""
+    # Primary: per-species methyltransferase co-option summary
     path = RESULTS_DIR / "methylase_cooption_summary.tsv"
     df = safe_read(path)
+    # Supplement with TE-embedded DNMT screening results
+    te_dnmt_path = Path("/legserv/Temp/Carlos/EDF-TE/results/Co-option/te_dnmt_search/te_with_dnmt.tsv")
+    te_dnmt = safe_read(te_dnmt_path)
+    if te_dnmt is not None and df is None:
+        df = te_dnmt
     units = {
-        "species": "species code",
-        "clade": "18-clade",
-        "dnmt_present": "0/1 (IPR005105+IPR022686 both present)",
-        "orthogroup_copynum": "count",
+        "domain": "methyltransferase domain name (DAM, DNMT, MTA70)",
+        "pfam": "Pfam accession(s)",
+        "function": "biological function",
+        "n_species_with_domain": "count of species with this domain",
+        "n_species_TE_context": "count of species where domain found in TE ORF",
+        "n_species_fused_TE": "count of species with host gene fused to TE structural domain",
+        "TE_class_involved": "TE classes harbouring the domain",
+        "co-option_type": "co-option mechanism description",
+        "fused_species": "species codes with fused proteins",
+        "clades": "clades represented",
+        "note": "additional notes",
+        # te_with_dnmt.tsv columns (if using alternate source)
+        "te_id": "TE consensus identifier (EarlGrey)",
+        "has_C5_DNMT": "True if TE ORF encodes C5-DNMT domain (PF00145/PF17980)",
+        "has_TE_core": "True if TE consensus encodes a TE structural domain",
+        "pfam_domains": "semicolon-separated Pfam domain hits in this TE ORF",
     }
     write_sheet(writer, df, "Fig3A_dnmt", units)
 
