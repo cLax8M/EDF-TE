@@ -2091,17 +2091,17 @@ Source data: Fig4L_hmgb3_heatmap.
 ### Figure 5. Whole-genome duplication and TE dynamics in Mucoromycota
 
 **(A)** Gene duplication rate tree for Mucoromycota (≤ 200-scaffold filter;
-Section 14.9).  The species tree backbone was inferred with IQ-TREE2 under the
-LG+G4 model (1,000 UFBoot replicates; Section 2); branch lengths represent
-expected substitutions per site and are proportional to divergence time under a
-relaxed molecular clock.  Normalised duplication rates per phylogenetic node
-(Section 14.3) were computed as the number of duplication events mapped to each
-node from OrthoFinder's `Duplications.tsv`, divided by the number of eligible
-orthogroups (≥ 2 sequences, max. 5 copies per species to exclude species-specific
-expansions).  The tree is drawn with ete3 v3.1.3 in rectangular layout
-(`TreeStyle`); internal nodes and terminal branches are coloured on a continuous
-heat-map scale from low (blue) to high (red) normalised duplication rate, giving
-a visual proxy for duplication events per unit of evolutionary divergence.
+Section 14.9).  The species tree topology was inferred with IQ-TREE2 under the
+LG+G4 model (1,000 UFBoot replicates; Section 2) and time-calibrated using a
+separate reference tree provided by the authors; branch lengths are therefore
+proportional to absolute time (Myr).  Normalised duplication rates per
+phylogenetic node (Section 14.3) were computed as the number of duplication
+events mapped to each node from OrthoFinder's `Duplications.tsv`, divided by the
+number of eligible orthogroups (≥ 2 sequences, max. 5 copies per species to
+exclude species-specific expansions).  The tree is drawn with ete3 v3.1.3 in
+rectangular layout (`TreeStyle`); internal nodes and terminal branches are
+coloured on a continuous heat-map scale from low (blue) to high (red) normalised
+duplication rate, giving a visual proxy for duplication events per million years.
 Nodes identified as duplication-rate outliers (Robust Z-score ≥ 1.5 of the
 node-level duplication rate distribution binned by tree depth; Section 14.3) are
 marked with filled circles whose diameter is proportional to the Robust Z-score.
