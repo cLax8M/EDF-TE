@@ -1101,10 +1101,67 @@ DAM-TE fusions involve DIRS-class elements, and the DAM domain is found within t
 TE ORF rather than as an independently transcribed host gene, indicating that the
 DIRS element has captured and carries the methyltransferase as a functional passenger.
 
+**Phylogenetic trees for fusion domain families.**  For each of the 31 candidate
+domains entering the master expansion table, phylogenetic trees were built to
+visualise the distribution of TE-fused proteins relative to their non-fused
+paralogues (`expansion_analysis/05_phylo_pipeline.sh`, SLURM array of 31 jobs).
+For each domain: (1) all proteins carrying the target Pfam domain were extracted
+from the 238 proteomes; (2) sequences were aligned with MAFFT v7.526 (`--auto`);
+(3) the alignment was trimmed with trimAl v1.5 (`-automated1`); (4) a maximum-
+likelihood tree was inferred with FastTree 2.2 (`-lg -gamma`).  Each leaf was
+annotated with the clade identity of its host species and flagged if the protein
+also carried any TE-machinery domain (from the TE-core domain set; see §13.1).
+TE-fused proteins are displayed as large coloured symbols in the circular ggtree
+visualisation (`fig_te_fusion_trees.R`), colour-coded by associated TE domain
+type (RVT_1: blue; rve integrase: pink; Chromo: green; MULE transposase:
+orange-red; Tc5 transposase: yellow-orange).  Trees for the highlighted domains
+(FLYWCH, CotH, NACHT) are provided in Supplementary Figures.
+
+For the Gypsy/DIRS RT domain context, a broader reverse-transcriptase phylogeny
+was built using all proteins carrying both a chromodomain (PF00385 Chromo) and an
+RT domain (PF00078 RVT_1 or PF07727 RVT_2) across all 238 proteomes
+(`Cooption/scripts/fig_H_gypsy_chromo_phylotree.py`).  Sequences were aligned
+with MAFFT v7.526 (`--auto`) and a maximum-likelihood tree was inferred with
+IQ-TREE2 (`-m MFP -bb 1000`), allowing model selection.  This tree was used to
+classify Gypsy elements and is shown in Fig. 4.
+
+For the DAM + RT phylogeny specifically, the RT domain of each DAM-containing ORF
+was extracted by profile-guided alignment (`hmmalign --trim`) to the PF00078 HMM;
+the DAM domain was aligned separately with MAFFT after trimming to the PF05869
+profile.  Both trees were inferred with FastTree 2.2 (`-lg -gamma`), with seven
+confirmed bacterial DAM orthologues (UniProt: P0AEE8, P43870, Q9KNA4, Q8ZI12,
+P26402, O34634, A1KSH9) included as outgroup in the DAM tree
+(`DAM_search/06_DAM_RT_phylogeny.py`).
+
 #### 13.5 DAM methyltransferases embedded within TEs
 
-DAM N6-adenine methyltransferase domain proteins (Pfam PF05869) were identified in
-all 320 predicted proteomes by HMMER v3.3.2 hmmsearch:
+**Systematic methylation domain screening in TE ORFs.**  To assess the full
+breadth of methyltransferase domains encoded within TE consensus sequences, the
+EarlGrey TE libraries for all 238 species were first translated into all six
+reading frames with EMBOSS `getorf` (minimum ORF length 100 aa).  The resulting
+ORF databases were then screened by `hmmscan` against a curated set of
+methyltransferase HMMs comprising three functional classes:
+
+- **C5-cytosine DNA methyltransferase** (DNMT): PF00145 (DNA_methylase), PF17980
+  (ADD_DNMT3) — the canonical eukaryotic 5mC maintenance and de-novo enzymes.
+- **MT-A70 / m6A RNA/DNA methyltransferase** (MTA70): PF05063 (MT-A70) — the
+  catalytic subunit of the METTL3/METTL14 m6A writer complex and its TE-encoded
+  homologues.
+- **DAM-class N6-adenine DNA methyltransferase**: PF05869 (Dam), PF01555
+  (N6_N4_Mtase) — the bacterial-type Dam domain found in DIRS and Gypsy elements.
+
+A TE ORF was classified as carrying a given methyltransferase domain when ≥ 1
+hmmscan hit at E-value ≤ 10⁻⁵ (domain-level score) was detected.  Of the three
+classes, only DAM-domain ORFs also carried TE-structural domains in the same ORF
+(co-occurrence with RVT_1, rve, Chromo, or gag_pre-integrase at E ≤ 10⁻⁵).
+No TE ORF carried a DNMT (C5-methyltransferase PF00145/PF17980) or MTA70 domain
+together with a TE-structural domain, indicating that C5-DNMT and MTA70 fusions
+within TE coding frames are either absent from or extremely rare in fungi
+(`te_dnmt_search/parse_te_dnmt.py`; `te_dnmt_search/te_with_dnmt.tsv`).
+
+**DAM-class methyltransferases in annotated proteomes.**  DAM N6-adenine
+methyltransferase domain proteins (Pfam PF05869) were also identified in all 320
+predicted proteomes by HMMER v3.3.2 hmmsearch:
 
 ```
 hmmsearch --cpu 8 -E 1e-5 --noali \
@@ -1124,9 +1181,18 @@ A gene was classified as **TE-embedded** when the distance field returned by
 `bedtools closest -d` equalled 0, indicating that the gene model fully overlapped
 with at least one annotated TE copy on the same strand.
 
-AMT1-class N6-adenine methyltransferases were defined by IPR014885 (Methyltransferase,
-N6-adenine, N-terminal domain).  The 2×2 Fisher's exact test for co-occurrence of
-DAM-TE and AMT1 across 320 species yielded **OR = 5.19, p = 0.028** (two-tailed).
+**DAM domain co-fusion within DIRS ORFs.**  The phase-2 screening of EarlGrey TE
+ORFs searched each species' ORF database with a combined HMM profile set including
+Dam (PF05869), N6_N4_Mtase (PF01555), and the full TE-structural domain set (RVT_1,
+RVT_2, rve, Chromo, gag_pre-integrase).  A DAM-TE co-fusion was defined as a single
+ORF carrying ≥ 1 methylase hit AND ≥ 1 TE-context domain hit, both at E ≤ 10⁻⁵
+(`DAM_search/02_hmmsearch_array.sh`, `DAM_search/03_parse_results.py`).  The
+`same_orf = YES` criterion in the phase-2 master table ensures that both domains
+are encoded within the same open reading frame rather than in adjacent ORFs on the
+same TE consensus.  This is a key distinction: the DAM methyltransferase is a
+functional passenger embedded within the retrotransposon's coding region, not a
+neighbouring host gene co-annotated with the TE.
+
 Fifteen species harboured confirmed DAM-TE genes: 14 associated with DIRS-class LTR
 retrotransposons, 1 with a Gypsy LTR element.
 
@@ -1189,6 +1255,30 @@ non-autonomous TEs that carry host gene fragments
 intersected with the EarlGrey annotation; genes fully embedded within a TE interval
 (overlap ≥ 90 % of gene length by a single TE copy) and shorter than the median
 domain-family gene length by > 40 % were flagged as putative pack elements.
+
+**Evidence integration and mechanism classification.**  Each domain in the master
+expansion table was assigned to one of three mutually exclusive mechanism
+categories based on two binary evidence flags (`expansion_analysis/08_summary_figures.R`):
+
+- **TE-proximity evidence** (flag `has_prox`): met if pack-element candidates
+  ≥ 30 OR the genomic-proximity Mann–Whitney p-value (§13.6 TE proximity analysis)
+  was < 0.05 after BH correction.  This indicates that gene copies are
+  non-randomly concentrated near TE insertions, consistent with TE-mediated
+  amplification.
+
+- **TE co-option/fusion evidence** (flag `has_fus`): met if ≥ 3 proteins in the
+  dataset carry both the target domain and a TE-machinery domain in the same ORF
+  (§13.4 fusion screen), OR if ≥ 1 TE consensus sequence in the EarlGrey library
+  encodes the target domain (`n_te_consensus_with_domain > 0`).  This indicates
+  direct incorporation of the host domain into a TE coding frame.
+
+Domains satisfying both flags were classified as **"1+2: TE-proximity AND TE
+co-option"**.  Domains satisfying `has_prox` only were classified as
+**"1: TE-proximity mediated expansion"**.  Domains satisfying `has_fus` only
+were classified as **"2: TE co-option / domestication"**.  All remaining
+candidate expansions lacking either flag were classified as **"Reference: copy
+expansion, no clear TE link"** and were excluded from the main TE-expansion
+figure panels but retained in Supplementary Table S1.
 
 ---
 
@@ -1709,34 +1799,31 @@ catalogue (Source Data; §17 of Methods).
 
 #### 17.2 RNA-seq datasets for ChimeraTE analysis
 
-| Species | Data type | Accession / Source | Reference |
+| Species | Data type | SRA Accession | Reference |
 |---|---|---|---|
-| *Mucor lusitanicus* | mRNA-seq | MycoMobilome study | This study |
-| *Rhizopus microsporus* | mRNA-seq | MycoMobilome study | This study |
-| *Phycomyces blakesleeanus* | mRNA-seq | MycoMobilome study | This study |
-| *Amphimedon queenslandica* (AP_Amoprot) | mRNA-seq | SRA (NCBI) | Public |
-| *Blastobotrys brendanlejeunia* (BL_Blabri1) | mRNA-seq | SRA (NCBI) | Public |
-| *Basidiobolus meristosporus* (BS_Basme92) | mRNA-seq | SRA (NCBI) | Public |
-| *Batrachochytrium dendrobatidis* (CH_Batde5) | mRNA-seq | SRA (NCBI) | Public |
-| *Batrachochytrium salamandrivorans* (CH_Batsa1) | mRNA-seq | SRA (NCBI) | Public |
-| *Piromyces finnis* (CH_Pirfi3) | mRNA-seq | SRA (NCBI) | Public |
-| *Enterocytozoon bieneusi* (EN_Entmai1) | mRNA-seq | SRA (NCBI) | Public |
-| *Zoophthora radicans* (EN_Zoorad1) | mRNA-seq | SRA (NCBI) | Public |
-| *Geosiphon pyriformis* (GL_Geopyr1) | mRNA-seq | SRA (NCBI) | Public |
-| *Rhizophagus clarus* (GL_Rhicl1) | mRNA-seq | SRA (NCBI) | Public |
-| *Rhizophagus irregularis* (GL_RhiirA4) | mRNA-seq | SRA (NCBI) | Public |
-| *Coelomomyces lativittatus* (KX_Coemoj1) | mRNA-seq | SRA (NCBI) | Public |
-| *Kickxella alabastrina* (KX_Kicala1) | mRNA-seq | SRA (NCBI) | Public |
-| *Encephalitozoon cuniculi* (MI_Enccu1) | mRNA-seq | SRA (NCBI) | Public |
-| *Spraguea lophii* (MI_Sprlo1) | mRNA-seq | SRA (NCBI) | Public |
-| *Vavraia culicis* (MI_Vavcu1) | mRNA-seq | SRA (NCBI) | Public |
-| *Discodinia discoidea* (MO_Disdec1) | mRNA-seq | SRA (NCBI) | Public |
-| *Mortierella elongata* (MO_Morel2) | mRNA-seq | SRA (NCBI) | Public |
-| *Fonticula alba* (NU_Fontalba) | mRNA-seq | SRA (NCBI) | Public |
-| *Pilobolus crystallinus* (ZO_Pipcy3) | mRNA-seq | SRA (NCBI) | Public |
-
-*Note: Individual SRA run accessions for RNA-seq datasets are catalogued in the
-source data sheet `SupplTab_RNA-seq_accessions`.*
+| *Mucor lusitanicus* (MU_Mucci3) | mRNA-seq (interleaved, 3 reps) | — (MycoMobilome; local) | This study |
+| *Rhizopus microsporus* (MU_Rhimi59) | mRNA-seq (interleaved, 3 reps) | — (MycoMobilome; local) | This study |
+| *Phycomyces blakesleeanus* (MU_Phybl4) | mRNA-seq (interleaved, 3 reps) | — (MycoMobilome; local) | This study |
+| *Amoeboaphelidium protococcarum* (AP_Amoprot) | mRNA-seq | SRR18053693 | Rybakov *et al.*, 2022 |
+| *Blastobotrys brendanlejeunia* (BL_Blabri1) | mRNA-seq | SRR6057017 | Mondo *et al.*, 2017 |
+| *Basidiobolus meristosporus* (BS_Basme92) | mRNA-seq | SRR10567091 | Corsaro *et al.*, 2019 |
+| *Batrachochytrium dendrobatidis* (CH_Batde5) | mRNA-seq | SRR27683879 | JGI/NCBI |
+| *Batrachochytrium salamandrivorans* (CH_Batsa1) | mRNA-seq | SRR3706726 | Stöhr *et al.*, 2016 |
+| *Piromyces finnis* (CH_Pirfi3) | mRNA-seq | SRR1748130 | Mondo *et al.*, 2017 |
+| *Enterocytozoon bieneusi* (EN_Entmai1) | mRNA-seq | SRR9001799 | NCBI/public |
+| *Zoophthora radicans* (EN_Zoorad1) | mRNA-seq | SRR8189665 | NCBI/public |
+| *Geosiphon pyriformis* (GL_Geopyr1) | mRNA-seq | SRR12018970 | NCBI/public |
+| *Rhizophagus clarus* (GL_Rhicl1) | mRNA-seq | DRR121634 | NCBI/DDBJ |
+| *Rhizophagus irregularis* (GL_RhiirA4) | mRNA-seq | SRR31872297 | NCBI/public |
+| *Coelomomyces lativittatus* (KX_Coemoj1) | mRNA-seq | SRR7140835 | NCBI/public |
+| *Kickxella alabastrina* (KX_Kicala1) | mRNA-seq | SRR6057250 | Mondo *et al.*, 2017 |
+| *Encephalitozoon cuniculi* (MI_Enccu1) | mRNA-seq | SRR769608 | NCBI/public |
+| *Spraguea lophii* (MI_Sprlo1) | mRNA-seq | SRR916958 | NCBI/public |
+| *Vavraia culicis* (MI_Vavcu1) | mRNA-seq | SRR1047418 | NCBI/public |
+| *Discodinia discoidea* (MO_Disdec1) | mRNA-seq | SRR13647699 | NCBI/public |
+| *Mortierella elongata* (MO_Morel2) | mRNA-seq | DRR045521 | NCBI/DDBJ |
+| *Fonticula alba* (NU_Fontalba) | mRNA-seq | SRR554356 | NCBI/public |
+| *Pilobolus crystallinus* (ZO_Pipcy3) | mRNA-seq | SRR5506705 | NCBI/public |
 
 #### 17.3 DAP-seq transcription factor binding data
 
@@ -1751,14 +1838,25 @@ source data sheet `SupplTab_RNA-seq_accessions`.*
 | *Phycomyces blakesleeanus* | PacBio CLR + IPD kinetics | This study |
 | *Rhizopus microsporus* | PacBio CLR + IPD kinetics | This study |
 
-#### 17.5 Small RNA sequencing
+#### 17.5 Small RNA sequencing and RNAi transcriptomes
 
-| Species | Data type | Source |
-|---|---|---|
-| *Mucor lusitanicus* | sRNA-seq (Illumina HiSeq 2500, 1×50 bp) | This study |
+Public sRNA-seq and paired mRNA-seq data for *Mucor* species were retrieved from
+the following BioProjects to characterise TE silencing by the RNAi pathway:
+
+| BioProject | GEO | Species / Strain | Data type | SRA accessions | Condition | Reference |
+|---|---|---|---|---|---|---|
+| PRJNA1220135 | GSE288970 | *Mucor lusitanicus* MU636 (WT) + MU412 (r3b2Δ) | sRNA-seq (ncRNA-Seq, NovaSeq 6000) | SRR32258784–SRR32258789 (6 runs) | WT vs r3b2Δ, mycelium | Tahiri, Lax *et al.*, 2025 (PMID 40141380) |
+| PRJNA1220135 | GSE288970 | *Mucor lusitanicus* MU636 (WT) + MU412 (r3b2Δ) | mRNA-seq (NovaSeq 6000) | SRR32258790–SRR32258795 (6 runs) | WT vs r3b2Δ, mycelium | Tahiri, Lax *et al.*, 2025 |
+| PRJNA1263436 | GSE297279 | *Mucor lusitanicus* MU636 (WT) + MU412 (r3b2Δ) | sRNA-seq (ncRNA-Seq, NovaSeq 6000) | SRR33582828–SRR33582835 (8 runs) | WT vs r3b2Δ, spores ± macrophages | Tahiri, Lax *et al.*, 2026 (PMID 41481777) |
+| PRJNA1263436 | GSE297279 | *Mucor lusitanicus* MU636 (WT) + MU412 (r3b2Δ) | mRNA-seq (NovaSeq 6000) | SRR33582836–SRR33582847 (12 runs) | WT vs r3b2Δ, spores ± macrophages | Tahiri, Lax *et al.*, 2026 |
+| PRJNA903107 | — | *Mucor lusitanicus* CBS277.49 (MU402 + RNAi mutants) | sRNA-seq (miRNA-Seq, NextSeq 500) | SRR22390021–SRR22390049 (19 runs) | WT + RNAi mutant series | Navarro-Mendoza *et al.*, 2023 (PMID 37014858) |
+| PRJNA903107 | — | *Mucor lusitanicus* CBS277.49 (MU402 + RNAi mutants) | mRNA-seq (paired-end, NextSeq 500) | SRR22390026–SRR22390078 (20 runs) | WT + RNAi mutant series | Navarro-Mendoza *et al.*, 2023 |
+| PRJNA453739 | GSE113706 | *Mucor circinelloides* WT + pyrF/pyrG epimutants | sRNA-seq (HiSeq 2000) | SRR7068267–SRR7068276 (10 runs) | WT vs RNAi epimutants | Chang *et al.*, 2019 (PMID 30742617) |
+| PRJNA243024 | GSE56353 | *Mucor lusitanicus* WT + FK506 epimutants | sRNA-seq (HiSeq 2000) | SRR1209506–SRR1209511 (6 runs) | WT vs FK506-resistant epimutants | Calo *et al.*, 2014 (PMID 25079329) |
+
+GSE288970 (PRJNA1220135) was the primary dataset for TE silencing analyses: sRNA reads were mapped to the *M. lusitanicus* CBS277.49 genome (GCF_001624055.1) and the EarlGrey TE annotation to quantify siRNA targeting of TE families; paired mRNA-seq was used to measure TE derepression in r3b2Δ mutants (35 direct NCRIP targets identified by Tahiri *et al.*).
 
 
----
 
 ## Part II — Figure Legends
 
