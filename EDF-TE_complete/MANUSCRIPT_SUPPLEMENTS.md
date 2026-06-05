@@ -2090,9 +2090,28 @@ Source data: Fig4L_hmgb3_heatmap.
 
 ### Figure 5. Whole-genome duplication and TE dynamics in Mucoromycota
 
-**(A)** Gene duplication rate tree for Mucoromycota (Section 14.9; ≤ 200-scaffold
-filter) annotated with normalised duplication rates per phylogenetic node, with an
-adjacent bar chart of co-linear paralog counts per species (Section 14.3).
+**(A)** Gene duplication rate tree for Mucoromycota (≤ 200-scaffold filter;
+Section 14.9).  The species tree backbone was inferred with IQ-TREE2 under the
+LG+G4 model (1,000 UFBoot replicates; Section 2).  Normalised duplication rates
+per phylogenetic node (Section 14.3) were computed as the number of duplication
+events mapped to each node from OrthoFinder's `Duplications.tsv`, divided by the
+number of eligible orthogroups (≥ 2 sequences, max. 5 copies per species to
+exclude species-specific expansions).  The tree is drawn in rectangular layout
+(ete3 v3.1.3 `TreeStyle`); internal nodes and terminal branches are coloured on a
+continuous heat-map scale from low (blue) to high (red) normalised duplication
+rate.  Nodes identified as duplication-rate peaks (Robust Z-score ≥ 1.5 of the
+node-level duplication rate distribution across all species; Section 14.3) are
+marked with filled circles whose diameter is proportional to the Robust Z-score.
+WGD-candidate species were identified by integrating three independent lines of
+evidence (Section 14.6): (i) elevated normalised duplication rate (R ≥ 0.30),
+(ii) significant Ks peaks in the paranome (wgd v2 `dmd` + Gaussian mixture model;
+Section 14.4), and (iii) collinearity-based multiplicon detection (wgd v2 `syn`;
+Section 14.5).  Species were classified as **Strong WGD**, **Weak/ancient WGD**,
+**Duplication-only**, or **No WGD** (Section 14.6, Table §14.6), with the
+classification indicated by a coloured strip (red = strong, orange = weak,
+yellow = questionable, grey = none).  An adjacent bar chart shows the number of
+co-linear paralog pairs (multiplicon anchor points) per species from the wgd v2
+`syn` synteny analysis (Section 14.5).
 Source data: Fig5A_paralogs.
 
 **(B)** Syntenic block structure and TE content (Section 14.5).  Ribbon diagram
