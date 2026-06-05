@@ -502,13 +502,12 @@ def build_fig4g(writer):
     df = safe_read(path)
     if df is not None:
         if "pfam" in df.columns and "name" in df.columns:
-            # CotH domain: PF05731 or name contains CotH
-            mask = df["pfam"].str.startswith("PF05731", na=False) | \
+            # CotH domain: PF08757 (spore coat protein, Mucorales-expanded)
+            mask = df["pfam"].str.startswith("PF08757", na=False) | \
                    df["name"].str.contains("CotH", case=False, na=False)
             df = df[mask].copy()
     units = {
-        "pfam": "Pfam accession",
-        "name": "domain name (CotH)",
+        "pfam": "Pfam accession (PF08757 = spore coat protein CotH)",
         "target_clade": "clade with CotH expansion",
         "mechanism": "expansion mechanism",
         "n_fusion_proteins": "proteins with CotH + TE structural domain",
@@ -529,6 +528,11 @@ def build_fig4h(writer):
         cols_keep = ["species", "te_class", "source", "DAM_evalue", "RT_evalue",
                      "rep_orf", "orf_length_aa", "domain_architecture"]
         df = df[[c for c in cols_keep if c in df.columns]]
+    # Also try to attach tree annotation if available
+    annot_path = RESULTS_DIR / "phylo" / "DAM_full_annot.tsv"
+    annot = safe_read(annot_path)
+    if annot is not None and df is not None and "species" in annot.columns:
+        df = df.merge(annot, on="species", how="left", suffixes=("", "_annot"))
     units = {
         "species": "species code",
         "te_class": "TE class of DAM-embedding element (LTR/DIRS or LTR/Gypsy)",
