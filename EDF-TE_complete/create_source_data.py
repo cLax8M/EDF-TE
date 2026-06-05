@@ -44,6 +44,10 @@ S2_DIR = Path(os.environ.get("S2_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" /
 S3_DIR = Path(os.environ.get("S3_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section3_te_epigenetics"))
 S4_DIR = Path(os.environ.get("S4_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section4_te_cooption"))
 S6_DIR = Path(os.environ.get("S6_DIR", BASE_DIR / "EDF-TE" / "EDF-TE_complete" / "section6_htt"))
+HTT_DIR = Path(os.environ.get("HTT_DIR", "/legserv/Temp/Carlos/EDF-TE/results/HTT"))
+TE_LANDSCAPE_DIR = Path(os.environ.get("TE_LANDSCAPE_DIR", "/legserv/Temp/Carlos/EDF-TE/results/Section2_TElandscape"))
+PANGENOME_DIR = Path(os.environ.get("PANGENOME_DIR", "/legserv/Temp/Carlos/EDF-TE/results/PanGenome/results"))
+GENOMIC_FEAT_DIR = Path(os.environ.get("GENOMIC_FEAT_DIR", "/legserv/Temp/Carlos/EDF-TE/results/GenomicFeatures_V3"))
 
 
 # ---------------------------------------------------------------------------
@@ -91,50 +95,71 @@ def write_sheet(writer: pd.ExcelWriter, df: pd.DataFrame, sheet_name: str,
 # ---------------------------------------------------------------------------
 
 def build_fig1b(writer):
-    """Fig1B_genomic_features: per-species 6 metrics + z-scores."""
-    path = BASE_DIR / "EDF-TE" / "Section2_TElandscape" / "genomic_features.tsv"
-    df = safe_read(path)
-    if df is None:
-        # Try alternate location
-        alt = BASE_DIR / "EDF-TE" / "GenomicFeatures" / "genomic_features.tsv"
-        df = safe_read(alt)
-    if df is None:
-        write_sheet(writer, None, "Fig1B_genomic_features")
-        return
-    metrics = [c for c in df.columns if c not in ("species", "clade")]
-    for m in metrics:
-        if pd.api.types.is_numeric_dtype(df[m]):
-            df[f"{m}_zscore"] = stats.zscore(df[m].fillna(df[m].median()), ddof=1)
+    """Fig1B_pangenome: pan-genome accumulation curve data per taxonomic group."""
+    # Primary: summary_final_counts.tsv (one row per clade: n_species, pangenome, core, shell, unique)
+    summary_path = PANGENOME_DIR / "summary_final_counts.tsv"
+    df = safe_read(summary_path)
+    # Also gather per-group accumulation curves
+    group_dir = PANGENOME_DIR / "per_group"
+    frames = []
+    if group_dir.is_dir():
+        for tsv in sorted(group_dir.glob("*_pangenome.tsv")):
+            gdf = safe_read(tsv)
+            if gdf is not None:
+                gdf["group_code"] = tsv.stem.replace("_pangenome", "")
+                frames.append(gdf)
+    if frames:
+        acc = pd.concat(frames, ignore_index=True)
+        if df is not None:
+            # Merge group metadata onto accumulation curves
+            meta_cols = [c for c in df.columns if c in ("group_code", "group_name", "n_species")]
+            if meta_cols:
+                acc = acc.merge(df[[*meta_cols]], on="group_code", how="left")
+        df = acc
     units = {
-        "species": "species code",
-        "clade": "18-clade classification",
-        "genome_size_mb": "Mb",
-        "gc_pct": "%",
-        "gene_count": "count",
-        "mean_gene_length_bp": "bp",
-        "intron_density": "introns/gene",
-        "n50_mb": "Mb",
+        "group_code": "clade code",
+        "group_name": "clade full name",
+        "n": "number of species sampled (accumulation step)",
+        "pangenome_mean": "mean HOG count (pan-genome)",
+        "pangenome_sd": "s.d. HOG count (pan-genome)",
+        "core_mean": "mean HOG count (core)",
+        "core_sd": "s.d. HOG count (core)",
+        "shell_mean": "mean HOG count (shell)",
+        "shell_sd": "s.d. HOG count (shell)",
+        "unique_mean": "mean HOG count (unique)",
+        "unique_sd": "s.d. HOG count (unique)",
     }
-    write_sheet(writer, df, "Fig1B_genomic_features", units)
+    write_sheet(writer, df, "Fig1B_pangenome", units)
 
 
 def build_fig1c(writer):
-    """Fig1C_pangenome: accumulation curve mean ± SD."""
-    path = BASE_DIR / "EDF-TE" / "PanGenome" / "pangenome_accumulation.tsv"
+    """Fig1C_genomic_features: per-species genomic feature metrics (exon/intron content)."""
+    path = GENOMIC_FEAT_DIR / "ALL_SPECIES_ALL_SUMMARY_V4.txt"
     df = safe_read(path)
     if df is None:
-        alt = BASE_DIR / "PanGenome" / "pangenome_accumulation.tsv"
+        alt = GENOMIC_FEAT_DIR / "ALL_SPECIES_ALL_SUMMARY.txt"
         df = safe_read(alt)
+    if df is None:
+        write_sheet(writer, None, "Fig1C_genomic_features")
+        return
+    # Rename Species column to species for consistency
+    if "Species" in df.columns:
+        df = df.rename(columns={"Species": "species"})
+    # Compute percentages from raw counts
+    if "Total_Exons" in df.columns and "Genome_Size_bp" in df.columns:
+        df["genome_size_mb"] = df["Genome_Size_bp"] / 1e6
     units = {
-        "n_species_sampled": "count",
-        "core_mean": "gene count",
-        "core_sd": "gene count",
-        "shell_mean": "gene count",
-        "shell_sd": "gene count",
-        "unique_mean": "gene count",
-        "unique_sd": "gene count",
+        "species": "species code",
+        "Genome_Size_bp": "bp",
+        "genome_size_mb": "Mb",
+        "Total_Genes": "count",
+        "Total_Introns": "count",
+        "Total_Exons": "count",
+        "Avg_Exons_Per_Gene": "mean exons per gene",
+        "Avg_Isoforms_Per_Gene": "mean isoforms per gene",
+        "Avg_Introns_All": "mean introns per multi-exon gene",
     }
-    write_sheet(writer, df, "Fig1C_pangenome", units)
+    write_sheet(writer, df, "Fig1C_genomic_features", units)
 
 
 def build_fig1d(writer):
@@ -198,49 +223,49 @@ def build_fig2a(writer):
 
 
 def build_fig2b(writer):
-    """Fig2B_pcoa: PCoA coordinates per species."""
-    path = BASE_DIR / "TE_analysis" / "EarlGrey" / "pcoa_coordinates.tsv"
+    """Fig2B_pca_composition: PCoA of TE class composition (Bray-Curtis) per species."""
+    path = TE_LANDSCAPE_DIR / "G01_pcoa_coords.tsv"
     df = safe_read(path)
     units = {
         "species": "species code",
-        "clade": "18-clade",
-        "pcoa_bc_1": "arbitrary units",
-        "pcoa_bc_2": "arbitrary units",
-        "pcoa_ait_1": "arbitrary units",
-        "pcoa_ait_2": "arbitrary units",
-        "pcoa_jac_1": "arbitrary units",
-        "pcoa_jac_2": "arbitrary units",
-        "shannon_h": "bits",
+        "clade": "18-clade classification",
+        "PCo1": "principal coordinate 1 (Bray-Curtis; arbitrary units)",
+        "PCo2": "principal coordinate 2 (arbitrary units)",
+        "PCo3": "principal coordinate 3 (arbitrary units)",
     }
-    write_sheet(writer, df, "Fig2B_pcoa", units)
+    write_sheet(writer, df, "Fig2B_pca_composition", units)
 
 
 def build_fig2c(writer):
-    """Fig2C_kimura: Kimura histogram bin values per species."""
-    path = BASE_DIR / "TE_analysis" / "EarlGrey" / "kimura_bins.tsv"
+    """Fig2C_kimura_ri: Recency Index per species (input to clade boxplot)."""
+    path = TE_LANDSCAPE_DIR / "C01_kimura_species.tsv"
     df = safe_read(path)
     units = {
         "species": "species code",
-        "clade": "18-clade",
-        "te_class": "TE class",
-        "kimura_bin_midpoint": "K2P distance (dimensionless)",
-        "bp_in_bin": "bp",
-        "recency_index": "fraction [0,1]",
+        "recency_index": "fraction [0,1] — proportion of TE bp in youngest Kimura quartile",
+        "burst_score": "burst score (0=ancient, 1=very recent)",
+        "dominant_superfamily": "most abundant TE superfamily by bp",
+        "mean_div_weighted": "coverage-weighted mean Kimura divergence",
+        "n_superfamilies": "count of distinct annotated superfamilies",
+        "total_te_bp": "total TE bp (EarlGrey)",
     }
-    write_sheet(writer, df, "Fig2C_kimura", units)
+    write_sheet(writer, df, "Fig2C_kimura_ri", units)
 
 
 def build_fig2d(writer):
-    """Fig2D_shannon: Shannon H per species."""
-    path = BASE_DIR / "TE_analysis" / "EarlGrey" / "shannon_diversity.tsv"
+    """Fig2D_kimura_summary: mean Kimura divergence per TE superfamily x species."""
+    path = TE_LANDSCAPE_DIR / "C01_kimura_superfamily.tsv"
     df = safe_read(path)
     units = {
         "species": "species code",
-        "clade": "18-clade",
-        "shannon_h": "bits",
-        "clade_order": "integer (phylogenetic order of clade)",
+        "superfamily": "TE superfamily (EarlGrey annotation)",
+        "total_bp": "total bp of this superfamily",
+        "pct_of_TE": "% of total TE bp",
+        "recency_index": "fraction [0,1]",
+        "mean_div_weighted": "coverage-weighted mean Kimura divergence",
+        "n_families": "number of families within this superfamily",
     }
-    write_sheet(writer, df, "Fig2D_shannon", units)
+    write_sheet(writer, df, "Fig2D_kimura_summary", units)
 
 
 def build_fig3a(writer):
@@ -325,6 +350,52 @@ def build_fig3f(writer):
     write_sheet(writer, df, "Fig3F_srna_h3k9", units)
 
 
+def build_fig2e(writer):
+    """Fig2E_proximity_scatter: gene-TE proximity scatter for 41 candidate domain families."""
+    path = EXP_RESULTS / "figures" / "labeled_domains_metrics.tsv"
+    df = safe_read(path)
+    if df is not None:
+        keep = [c for c in [
+            "pfam", "name", "target_clade", "mechanism", "expansion_type",
+            "mw_pval_copynumber", "n_pack_element_candidates", "n_fusion_proteins",
+            "n_te_consensus_with_domain", "n_copies_symmetric_TE_flanking",
+            "prox_mw_pval", "pct5kb_clade", "fold_change",
+        ] if c in df.columns]
+        df = df[keep]
+    units = {
+        "pfam": "Pfam accession",
+        "name": "domain name",
+        "target_clade": "clade with significant expansion",
+        "mechanism": "expansion mechanism classification",
+        "mw_pval_copynumber": "Mann-Whitney U p (copy number; expanded vs rest)",
+        "n_pack_element_candidates": "gene copies fully embedded in TE (pack elements)",
+        "n_fusion_proteins": "proteins with both host and TE domain in same ORF",
+        "prox_mw_pval": "Mann-Whitney U p (proximity to nearest TE vs background)",
+        "pct5kb_clade": "% domain-containing genes within 5 kb of a TE (clade)",
+        "fold_change": "fold change in copy number vs non-expanded clades",
+    }
+    write_sheet(writer, df, "Fig2E_proximity_scatter", units)
+
+
+def build_fig2f(writer):
+    """Fig2F_proximity_flanks: TE subfamily in symmetric flanks of expanded genes."""
+    path = EXP_RESULTS / "proximity" / "proximity_summary.tsv"
+    df = safe_read(path)
+    units = {
+        "species": "species code",
+        "clade": "18-clade",
+        "pfam": "Pfam accession",
+        "domain_name": "domain name",
+        "n_copies": "total gene copies of this domain in this species",
+        "median_dist_target": "median bp to nearest TE (domain-containing genes)",
+        "median_dist_bg": "median bp to nearest TE (background genes)",
+        "pct_nearest_is_te": "% domain genes with a TE as nearest neighbour",
+        "bg_pct_nearest_is_te": "% background genes with a TE as nearest neighbour",
+        "mw_pval_vs_bg": "Mann-Whitney U p (distance to TE; domain vs background)",
+    }
+    write_sheet(writer, df, "Fig2F_proximity_flanks", units)
+
+
 def build_fig4b(writer):
     """Fig4B_cooption_heatmap: fraction co-opted per clade × domain."""
     path = EXP_RESULTS / "clade_expansion_table.tsv"
@@ -406,41 +477,69 @@ def build_fig4e(writer):
 
 
 def build_fig4f(writer):
-    """Fig4F_dam_amt1: DAM-TE × AMT1 contingency + per-species annotation."""
+    """Fig4F_flywch_trees: FLYWCH x TE-RT fusion protein metadata (Fig4F)."""
+    path = EXP_RESULTS / "figures" / "labeled_domains_metrics.tsv"
+    df = safe_read(path)
+    if df is not None:
+        # Filter to FLYWCH domain (PF04500)
+        if "pfam" in df.columns:
+            df = df[df["pfam"] == "PF04500"].copy()
+    units = {
+        "pfam": "Pfam accession (PF04500 = FLYWCH)",
+        "name": "domain name",
+        "target_clade": "NE = Neocallimastigomycota",
+        "mechanism": "expansion mechanism",
+        "n_fusion_proteins": "proteins with FLYWCH + TE structural domain",
+        "n_pack_element_candidates": "FLYWCH gene copies embedded in TE",
+        "prox_mw_pval": "Mann-Whitney U p (proximity to TE)",
+    }
+    write_sheet(writer, df, "Fig4F_flywch_trees", units)
+
+
+def build_fig4g(writer):
+    """Fig4G_coth_trees: CotH x TE fusion protein metadata (Fig4G)."""
+    path = EXP_RESULTS / "figures" / "labeled_domains_metrics.tsv"
+    df = safe_read(path)
+    if df is not None:
+        if "pfam" in df.columns and "name" in df.columns:
+            # CotH domain: PF05731 or name contains CotH
+            mask = df["pfam"].str.startswith("PF05731", na=False) | \
+                   df["name"].str.contains("CotH", case=False, na=False)
+            df = df[mask].copy()
+    units = {
+        "pfam": "Pfam accession",
+        "name": "domain name (CotH)",
+        "target_clade": "clade with CotH expansion",
+        "mechanism": "expansion mechanism",
+        "n_fusion_proteins": "proteins with CotH + TE structural domain",
+        "n_pack_element_candidates": "CotH gene copies embedded in TE",
+        "prox_mw_pval": "Mann-Whitney U p (proximity to TE)",
+    }
+    write_sheet(writer, df, "Fig4G_coth_trees", units)
+
+
+def build_fig4h(writer):
+    """Fig4H_dam_rt_tree: DAM+RT protein metadata for circular phylogeny."""
     dam_path = RESULTS_DIR / "DAM_TE_summary_table_annotated.tsv"
-    amt_path = RESULTS_DIR / "ipr_AMT1_presence.tsv"
-    dam = safe_read(dam_path)
-    amt = safe_read(amt_path)
-    if dam is None or amt is None:
-        write_sheet(writer, None, "Fig4F_dam_amt1")
-        return
-    # amt1 has: species, AMT1_status, AMT1_proteinIds
-    amt = amt.rename(columns={"AMT1_status": "amt1_status"})
-    # dam has: species, te_class, source, DAM_evalue, RT_evalue, AMT1_status,
-    #          rep_orf, orf_length_aa, domain_architecture
-    dam = dam.rename(columns={"AMT1_status": "dam_amt1_col"})
-    # Outer merge on species
-    df = amt.merge(dam, on="species", how="outer")
-    df["dam_te_present"] = df["te_class"].notna().astype(int)
-    cols_keep = ["species", "amt1_status", "dam_te_present", "te_class",
-                 "DAM_evalue", "RT_evalue", "orf_length_aa", "domain_architecture",
-                 "source", "rep_orf"]
-    df = df[[c for c in cols_keep if c in df.columns]]
-    df = df.sort_values(["dam_te_present", "amt1_status"],
-                        ascending=[False, True]).reset_index(drop=True)
+    df = safe_read(dam_path)
+    if df is None:
+        # Fallback: phase2 master table
+        df = safe_read(RESULTS_DIR / "phase2_master_table.tsv")
+    if df is not None:
+        cols_keep = ["species", "te_class", "source", "DAM_evalue", "RT_evalue",
+                     "rep_orf", "orf_length_aa", "domain_architecture"]
+        df = df[[c for c in cols_keep if c in df.columns]]
     units = {
         "species": "species code",
-        "amt1_status": "present | absent (IPR014885)",
-        "dam_te_present": "1 = DAM gene embedded in TE; 0 = not found",
-        "te_class": "TE class of DAM-embedding element",
-        "DAM_evalue": "HMMER E-value vs PF05869",
-        "RT_evalue": "HMMER E-value for reverse transcriptase domain",
-        "orf_length_aa": "length of TE-embedded ORF (aa)",
-        "domain_architecture": "InterProScan domain chain",
+        "te_class": "TE class of DAM-embedding element (LTR/DIRS or LTR/Gypsy)",
         "source": "Phase1 | Phase2 discovery phase",
-        "rep_orf": "RepBase consensus ORF match",
+        "DAM_evalue": "HMMER E-value vs PF05869 (DAM methyltransferase)",
+        "RT_evalue": "HMMER E-value for reverse transcriptase domain (RVT_1)",
+        "rep_orf": "RepBase consensus ORF label",
+        "orf_length_aa": "TE-embedded ORF length (aa)",
+        "domain_architecture": "InterProScan domain chain (e.g. RVT_1 -> Dam)",
     }
-    write_sheet(writer, df, "Fig4F_dam_amt1", units)
+    write_sheet(writer, df, "Fig4H_dam_rt_tree", units)
 
 
 def build_fig5a(writer):
@@ -524,8 +623,8 @@ def build_fig5a(writer):
 
 
 def build_fig5b(writer):
-    """Fig5B_breakpoints: TE density at breakpoints vs random per species."""
-    path = WGD_BP_DIR / "enrichment_summary.tsv"
+    """Fig5B_syntenic_blocks: syntenic block structure and TE content."""
+    path = WGD_DIR / "synteny_summary.tsv"
     df = safe_read(path)
     units = {
         "species": "species code",
@@ -539,36 +638,55 @@ def build_fig5b(writer):
         "window_bp": "bp",
         "n_permutations": "count",
     }
-    write_sheet(writer, df, "Fig5B_breakpoints", units)
+    write_sheet(writer, df, "Fig5B_syntenic_blocks", units)
 
 
 def build_fig5c(writer):
-    """Fig5C_te_class_bp: TE class at breakpoints vs background per species."""
-    path = WGD_BP_DIR / "per_superfamily_summary.tsv"
-    df = safe_read(path)
+    """Fig5C_te_breakpoints: TE enrichment at WGD breakpoints — log2FC + Wilcoxon BH-q."""
+    # Aggregate per-species per_superfamily results from te_breakpoint_enrichment/
+    frames = []
+    if WGD_BP_DIR.is_dir():
+        for tsv in sorted(WGD_BP_DIR.glob("*.tsv")):
+            sdf = safe_read(tsv)
+            if sdf is None:
+                continue
+            sp = tsv.stem
+            sdf["species"] = sp
+            frames.append(sdf)
+    if frames:
+        df = pd.concat(frames, ignore_index=True)
+    else:
+        # Fallback: try a single summary file
+        df = safe_read(WGD_BP_DIR / "enrichment_summary.tsv")
     if df is None:
-        write_sheet(writer, None, "Fig5C_te_class_bp")
+        write_sheet(writer, None, "Fig5C_te_breakpoints")
         return
-    # per_superfamily_summary is wide: species × TE superfamily
-    # Melt to long format
-    id_vars = [c for c in df.columns if c in ("species", "species_id")]
-    if not id_vars:
-        write_sheet(writer, df, "Fig5C_te_class_bp")
-        return
-    id_col = id_vars[0]
-    melted = df.melt(id_vars=[id_col], var_name="te_class",
-                     value_name="bp_at_breakpoints")
-    melted = melted.rename(columns={id_col: "species"})
+    # Ensure species column exists and select informative columns
+    cols = [c for c in [
+        "species", "superfamily", "te_class", "obs_te_bp_per_window",
+        "bg_te_bp_per_window", "log2_fold_change", "p_value_permutation",
+        "wilcoxon_p", "BH_q", "n_breakpoints", "n_permutations",
+    ] if c in df.columns]
+    if cols:
+        df = df[cols]
     units = {
         "species": "species code",
-        "te_class": "TE class / superfamily",
-        "bp_at_breakpoints": "bp of TE class at breakpoint windows",
+        "superfamily": "TE superfamily (EarlGrey)",
+        "te_class": "TE class",
+        "obs_te_bp_per_window": "mean TE bp per breakpoint window (±5 kb)",
+        "bg_te_bp_per_window": "mean TE bp per random window (100 permutations)",
+        "log2_fold_change": "log2(obs / bg_mean)",
+        "p_value_permutation": "permutation p-value (one-sided)",
+        "wilcoxon_p": "Wilcoxon rank-sum p (observed vs 10,000 random windows)",
+        "BH_q": "Benjamini-Hochberg FDR-corrected q",
+        "n_breakpoints": "count of synteny breakpoints",
+        "n_permutations": "number of random window permutations",
     }
-    write_sheet(writer, melted, "Fig5C_te_class_bp", units)
+    write_sheet(writer, df, "Fig5C_te_breakpoints", units)
 
 
 def build_fig5d(writer):
-    """Fig5D_dup_rate: gene duplication rate per branch (normalised by eligible trees)."""
+    """Fig5D_te_age_breakpoints: TE insertion age vs enrichment at WGD breakpoints."""
     # Primary: paper-like normalised rates
     path = WGD_DIR / "duplication_rates_by_node_normalized.tsv"
     df = safe_read(path)
@@ -588,117 +706,123 @@ def build_fig5d(writer):
         "dup_rate_per_eligible_tree": "n_duplications / n_eligible_trees (normalised)",
         "max_species_copies_filter": "max allowed copies per species (expansion filter)",
     }
-    write_sheet(writer, df, "Fig5D_dup_rate", units)
+    write_sheet(writer, df, "Fig5D_te_age_breakpoints", units)
 
 
 def build_fig6a(writer):
-    """Fig6A_htt_chord: HTT candidate counts per clade pair."""
-    path = S6_DIR / "results" / "htt_clade_pairs.tsv"
+    """Fig6A_htt_chord: validated HTT event counts per clade pair (chord diagram)."""
+    path = HTT_DIR / "06_htt_candidates" / "htt_candidates" / "htt_by_clade_pair.tsv"
     df = safe_read(path)
     if df is None:
-        path2 = BASE_DIR / "EDF-TE" / "HTT" / "htt_clade_pairs.tsv"
+        path2 = S6_DIR / "results" / "htt_clade_pairs.tsv"
         df = safe_read(path2)
     units = {
-        "q_clade": "query clade (donor)",
-        "s_clade": "subject clade (recipient)",
-        "n_candidates": "count of HTT candidates",
-        "dominant_te_class": "most frequent TE class in this clade pair",
+        "qclade": "query/donor clade",
+        "sclade": "subject/recipient clade",
+        "htt_count": "count of HTT candidate pairs (is_htt=True)",
     }
     write_sheet(writer, df, "Fig6A_htt_chord", units)
 
 
 def build_fig6b(writer):
-    """Fig6B_htt_class: HTT candidates per clade pair × TE class."""
-    path = S6_DIR / "results" / "htt_candidates_annotated.tsv"
+    """Fig6B_htt_ks: Ks distribution of HTT candidates stacked by TE class."""
+    path = HTT_DIR / "06_htt_candidates" / "htt_candidates" / "htt_candidates.tsv"
     df = safe_read(path)
-    if df is None:
-        path2 = BASE_DIR / "EDF-TE" / "HTT" / "htt_candidates_annotated.tsv"
-        df = safe_read(path2)
-    if df is not None and "q_clade" in df.columns and "te_class" in df.columns:
-        agg = (df.groupby(["q_clade", "s_clade", "te_class"])
-               .size().reset_index(name="n_candidates"))
-        df = agg
+    if df is not None:
+        # Only true HTT pairs; keep informative columns
+        if "is_htt" in df.columns:
+            df = df[df["is_htt"] == True].copy()
+        cols = [c for c in ["pair_id", "qclade", "sclade", "te_ks", "ka",
+                             "mrca_node", "busco_ks_threshold"] if c in df.columns]
+        df = df[cols]
     units = {
-        "q_clade": "donor clade",
-        "s_clade": "recipient clade",
-        "te_class": "TE class",
-        "n_candidates": "count",
+        "pair_id": "unique HTT candidate pair identifier",
+        "qclade": "donor clade",
+        "sclade": "recipient clade",
+        "te_ks": "Ks of TE copies between species pair",
+        "ka": "Ka (non-synonymous rate)",
+        "mrca_node": "MRCA node of the two species",
+        "busco_ks_threshold": "BUSCO-based Ks threshold for this MRCA node",
     }
-    write_sheet(writer, df, "Fig6B_htt_class", units)
+    write_sheet(writer, df, "Fig6B_htt_ks", units)
 
 
 def build_fig6c(writer):
-    """Fig6C_htt_identity: BLASTN pident per HTT candidate × TE class."""
-    path = S6_DIR / "results" / "htt_candidates_annotated.tsv"
+    """Fig6C_htt_heatmap: HTT candidate count matrix per clade pair."""
+    path = HTT_DIR / "06_htt_candidates" / "htt_candidates" / "htt_by_clade_pair.tsv"
     df = safe_read(path)
-    if df is None:
-        path2 = BASE_DIR / "EDF-TE" / "HTT" / "htt_candidates_annotated.tsv"
-        df = safe_read(path2)
-    if df is not None:
-        cols = ["q_clade", "s_clade", "te_class", "pident", "anomaly_score", "alignment_length"]
-        df = df[[c for c in cols if c in df.columns]]
-    units = {
-        "q_clade": "donor clade",
-        "s_clade": "recipient clade",
-        "te_class": "TE class",
-        "pident": "BLASTN percent identity [85,100]",
-        "anomaly_score": "d_expected − d_observed",
-        "alignment_length": "bp",
-    }
-    write_sheet(writer, df, "Fig6C_htt_identity", units)
+    if df is not None and "qclade" in df.columns and "sclade" in df.columns:
+        pivot = (df.groupby(["qclade", "sclade"])["htt_count"]
+                 .sum().unstack(fill_value=0).reset_index())
+        pivot = pivot.rename(columns={"qclade": "donor_clade"})
+        df = pivot
+    units = None  # wide format; column headers are clade codes
+    write_sheet(writer, df, "Fig6C_htt_heatmap", units)
 
 
 def build_fig6d(writer):
-    """Fig6D_min_events: minimum parsimony HTT events per TE class."""
-    path = S6_DIR / "results" / "htt_min_events.tsv"
-    df = safe_read(path)
+    """Fig6D_htt_line_synteny: LINE HTT locus flanking gene conservation."""
+    events_dir = HTT_DIR / "09_minimal_htt_events" / "events"
+    frames = []
+    if events_dir.is_dir():
+        for tsv in sorted(events_dir.glob("*_per_node.tsv")):
+            edf = safe_read(tsv)
+            if edf is not None:
+                edf["component"] = tsv.stem.replace("_per_node", "")
+                frames.append(edf)
+    df = pd.concat(frames, ignore_index=True) if frames else None
     if df is None:
-        path2 = BASE_DIR / "EDF-TE" / "HTT" / "htt_min_events.tsv"
-        df = safe_read(path2)
+        # Fallback: minimal events summary
+        df = safe_read(HTT_DIR / "09_minimal_htt_events" / "summary" / "minimal_events_by_component.tsv")
     units = {
-        "te_class": "TE class",
-        "n_minimum_events": "Dollo parsimony minimum independent transfer events",
+        "component": "HTT community component ID",
+        "component_id": "HTT community component ID",
+        "n_communities": "count of HTT communities in this component",
+        "n_clades": "number of distinct clades sharing this TE",
+        "n_distinct_clade_pairs": "unique clade pairs connected",
+        "min_events_component": "minimum HTT transfer events (Dollo parsimony)",
     }
-    write_sheet(writer, df, "Fig6D_min_events", units)
+    write_sheet(writer, df, "Fig6D_htt_line_synteny", units)
 
 
 def build_fig6e(writer):
-    """Fig6E_locus_cons: HTT locus conservation fraction counts."""
-    path = S6_DIR / "results" / "htt_locus_conservation.tsv"
+    """Fig6E_htt_te_enrichment: TE class enrichment among HTT candidates (hypergeometric)."""
+    path = HTT_DIR / "figures" / "figHTT_te_enrichment.tsv"
     df = safe_read(path)
-    if df is None:
-        path2 = BASE_DIR / "EDF-TE" / "HTT" / "htt_locus_conservation.tsv"
-        df = safe_read(path2)
-    if df is not None and "f_cons" in df.columns:
-        # Summarise counts per category
-        bins = pd.cut(df["f_cons"], bins=[-np.inf, 0.10, 0.30, np.inf],
-                      labels=["non_conserved", "partial", "conserved"])
-        counts = bins.value_counts().reset_index()
-        counts.columns = ["conservation_category", "n_candidates"]
-        counts["frac_total"] = counts["n_candidates"] / counts["n_candidates"].sum()
-        df = counts
     units = {
-        "conservation_category": "conserved (>=0.30) | partial (0.10-0.30) | non_conserved (<0.10)",
-        "n_candidates": "count",
-        "frac_total": "fraction [0,1]",
+        "te_class": "TE class",
+        "obs": "observed count of HTT candidates in this TE class",
+        "bg": "background genome bp in this TE class",
+        "expected": "expected count based on background frequency",
+        "obs_exp": "observed / expected ratio",
+        "log2_obs_exp": "log2(observed / expected)",
+        "bg_frac": "fraction of background in this TE class",
+        "obs_frac": "fraction of HTT candidates in this TE class",
+        "residual": "(obs - expected) / sqrt(expected) — Pearson residual",
     }
-    write_sheet(writer, df, "Fig6E_locus_cons", units)
+    write_sheet(writer, df, "Fig6E_htt_te_enrichment", units)
 
 
 def build_fig6f(writer):
-    """Fig6F_htt_heatmap: inter-clade HTT candidate count matrix (wide)."""
-    path = S6_DIR / "results" / "htt_candidates_annotated.tsv"
+    """Fig6F_htt_full: full HTT community set (all 223 candidates) for Supp Fig S7."""
+    path = HTT_DIR / "06_htt_candidates" / "htt_candidates" / "htt_candidates.tsv"
     df = safe_read(path)
-    if df is None:
-        path2 = BASE_DIR / "EDF-TE" / "HTT" / "htt_candidates_annotated.tsv"
-        df = safe_read(path2)
-    if df is not None and "q_clade" in df.columns and "s_clade" in df.columns:
-        pivot = (df.groupby(["q_clade", "s_clade"]).size()
-                 .unstack(fill_value=0).reset_index())
-        pivot = pivot.rename(columns={"q_clade": "donor_clade"})
-        df = pivot
-    units = None  # wide format; headers are self-explanatory clade names
-    write_sheet(writer, df, "Fig6F_htt_heatmap", units)
+    if df is not None and "is_htt" in df.columns:
+        df = df[df["is_htt"] == True].copy()
+    if df is not None:
+        cols = [c for c in ["pair_id", "qclade", "sclade", "te_ks", "mrca_node",
+                             "qgenome", "sgenome", "qseqid", "sseqid"] if c in df.columns]
+        df = df[cols]
+    units = {
+        "pair_id": "unique HTT candidate pair ID",
+        "qclade": "donor clade",
+        "sclade": "recipient clade",
+        "te_ks": "Ks of the TE copies between the two species",
+        "mrca_node": "MRCA node of the species pair",
+        "qgenome": "donor genome species code",
+        "sgenome": "recipient genome species code",
+    }
+    write_sheet(writer, df, "Fig6F_htt_full", units)
 
 
 # ---------------------------------------------------------------------------
@@ -706,34 +830,38 @@ def build_fig6f(writer):
 # ---------------------------------------------------------------------------
 
 SHEETS = [
-    ("Fig1B_genomic_features", build_fig1b),
-    ("Fig1C_pangenome", build_fig1c),
+    ("Fig1B_pangenome", build_fig1b),
+    ("Fig1C_genomic_features", build_fig1c),
     ("Fig1D_synteny", build_fig1d),
     ("Fig2A_te_content", build_fig2a),
-    ("Fig2B_pcoa", build_fig2b),
-    ("Fig2C_kimura", build_fig2c),
-    ("Fig2D_shannon", build_fig2d),
+    ("Fig2B_pca_composition", build_fig2b),
+    ("Fig2C_kimura_ri", build_fig2c),
+    ("Fig2D_kimura_summary", build_fig2d),
+    ("Fig2E_proximity_scatter", build_fig2e),
+    ("Fig2F_proximity_flanks", build_fig2f),
     ("Fig3A_dnmt", build_fig3a),
-    ("Fig3B_methylation", build_fig3b),
-    ("Fig3C_chromatin", build_fig3c),
-    ("Fig3D_nucleosome", build_fig3d),
-    ("Fig3E_srna_rpm", build_fig3e),
-    ("Fig3F_srna_h3k9", build_fig3f),
-    ("Fig4B_cooption_heatmap", build_fig4b),
-    ("Fig4C_chimte", build_fig4c),
-    ("Fig4D_tf_te", build_fig4d),
-    ("Fig4E_fusions", build_fig4e),
-    ("Fig4F_dam_amt1", build_fig4f),
+    ("Fig3B_5mc_family_age", build_fig3b),
+    ("Fig3C_gene_dist_5mc", build_fig3c),
+    ("Fig3D_adj_expr_meth", build_fig3d),
+    ("Fig3E_gene_dist_h3k9", build_fig3e),
+    ("Fig3F_adj_expr_h3k9", build_fig3f),
+    ("Fig4B_domain_barchart", build_fig4b),
+    ("Fig4C_te_class_prop", build_fig4c),
+    ("Fig4D_fusion_network", build_fig4d),
+    ("Fig4E_chimte", build_fig4e),
+    ("Fig4F_flywch_trees", build_fig4f),
+    ("Fig4G_coth_trees", build_fig4g),
+    ("Fig4H_dam_rt_tree", build_fig4h),
     ("Fig5A_paralogs", build_fig5a),
-    ("Fig5B_breakpoints", build_fig5b),
-    ("Fig5C_te_class_bp", build_fig5c),
-    ("Fig5D_dup_rate", build_fig5d),
+    ("Fig5B_syntenic_blocks", build_fig5b),
+    ("Fig5C_te_breakpoints", build_fig5c),
+    ("Fig5D_te_age_breakpoints", build_fig5d),
     ("Fig6A_htt_chord", build_fig6a),
-    ("Fig6B_htt_class", build_fig6b),
-    ("Fig6C_htt_identity", build_fig6c),
-    ("Fig6D_min_events", build_fig6d),
-    ("Fig6E_locus_cons", build_fig6e),
-    ("Fig6F_htt_heatmap", build_fig6f),
+    ("Fig6B_htt_ks", build_fig6b),
+    ("Fig6C_htt_heatmap", build_fig6c),
+    ("Fig6D_htt_line_synteny", build_fig6d),
+    ("Fig6E_htt_te_enrichment", build_fig6e),
+    ("Fig6F_htt_full", build_fig6f),
 ]
 
 

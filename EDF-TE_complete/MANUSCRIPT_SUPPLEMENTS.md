@@ -1752,7 +1752,7 @@ pairs relative to their expected frequencies under a null model of random pairin
 Chord diagrams illustrating the clade-pair network of HTT events were generated
 with the `circlize` R package v0.4.16 (`HTT/scripts/plot_htt_chord.R`,
 `plot_htt_chord_validated.R`).  Fig. 6 shows the validated high-confidence events;
-Supplementary Fig. S6 shows the full community set.  A locus-level synteny
+Supplementary Fig. S7 shows the full community set.  A locus-level synteny
 comparison for selected HTT pairs was generated with MUMmer + custom R plotting
 (`HTT/scripts/plot_htt_synteny.R`, `plot_htt_synteny_v2.R`).
 
@@ -1905,7 +1905,9 @@ Source data: Fig2B_pca_composition.
 
 **(C)** Boxplot of the Recency Index (RI) per clade (Section 6.3).  Clades sorted
 by median RI; each box shows the interquartile range; whiskers: 1.5 × IQR; outliers:
-individual points.
+individual points.  Statistical comparisons: Kruskal–Wallis H test across 18 clades;
+post-hoc pairwise Dunn test, Benjamini–Hochberg (BH) FDR correction; significance
+brackets shown for clade pairs with BH-corrected q < 0.05.
 Source data: Fig2C_kimura_ri.
 
 **(D)** Clustered Kimura divergence summary across 238 species, showing the mean
@@ -1916,10 +1918,12 @@ Source data: Fig2D_kimura_summary.
 **(E)** Two evidence streams: statistical proximity × structural pack-elements —
 panel D of `expansion_analysis/results/figures/fig2_te_proximity_mechanism.pdf`
 (Section 13.4).  Scatter plot of 41 candidate domain families: x-axis = Gene–TE
-proximity significance (−log p vs. random genes in the same genome); y-axis =
-gene copies embedded in TEs [log(n + 1)].  Top-right quadrant: domains
-statistically over-represented near TEs AND with TE-embedded copies; labels show
-domain name and TE class (colour).
+proximity significance (−log₁₀ BH-corrected Mann–Whitney U p, expanded-clade gene
+copies vs. a size-matched random background in the same genome); y-axis = log₂(n+1)
+gene copies fully embedded within a TE annotation.  Dashed reference lines indicate
+the BH-FDR 5% significance threshold.  Top-right quadrant: domains statistically
+over-represented near TEs AND with TE-embedded copies; labels show domain name and
+TE class (colour).
 Source data: Fig2E_proximity_scatter.
 
 **(F)** TE subfamily in symmetric flanks (41 domains) — panel C of the same file
@@ -1969,11 +1973,14 @@ Mann–Whitney U comparisons shown above brackets.
 Source data: Fig3D_adj_gene_expr_meth.
 
 **(E)** Gene distance from nearest TE insertion stratified by H3K9me3 ChIP
-enrichment level (Section 10.3).  Format as in (C).
+enrichment level (Section 10.3).  Format as in (C).  Kolmogorov–Smirnov test
+comparing the distributions of the lowest H3K9me3 class (Q1) versus the highest
+(Q4); D statistic and BH-corrected p shown in the panel.
 Source data: Fig3E_gene_dist_h3k9.
 
 **(F)** Adjacent gene expression by H3K9me3 peak presence/absence (Section 10.4).
-Format as in (D).
+Format as in (D).  BH-corrected Mann–Whitney U test per quartile comparison;
+significance brackets shown above boxes.
 Source data: Fig3F_adj_gene_expr_h3k9.
 
 **(G)** TE-associated methylated adenine cluster (MAC) expression at transcription
@@ -1981,6 +1988,8 @@ start sites (Section 12.1).  Violin plot comparing expression of TEs with ≥ 1 
 in the TSS window (−150 to +400 bp) versus TEs without MACs, for *Phycomyces
 blakesleeanus* and *Rhizopus microsporus* grown under mycelium dark conditions.
 MAC-associated TEs show distinct expression profiles relative to non-MAC TEs.
+Mann–Whitney U test (two-sided) comparing MAC-TSS versus non-MAC-TSS TE expression;
+BH-corrected p shown above the violins.
 Source data: Fig3G_mac_tss.
 
 **(H)** Metaplot of 5mC levels (Q1 vs. Q4 methylation bins) across TcMar-Tc1 and
@@ -1990,7 +1999,9 @@ Source data: Fig3H_metaplot.
 
 **(I)** TE families enriched at methylated transcription start sites (Section 10.4).
 Bar chart of TE superfamilies most frequently overlapping methylated TSS windows,
-per species.
+per species.  Enrichment significance assessed by hypergeometric test against the
+background frequency of each TE superfamily at all TSS; BH-FDR 5%; only superfamilies
+with q < 0.05 and enrichment ratio > 2 are labelled.
 Source data: Fig3I_mac_tss_families.
 
 **(J)** RNAi pathway overview — pie charts showing the proportion of TE superfamilies
@@ -2055,12 +2066,16 @@ Source data: Fig4H_dam_rt_tree.
 
 **(I)** Peak enrichment of TF binding (DAP-seq, 58 TFs) in TE classes — bubble chart
 (Section 13.3).  Bubble size: number of TF × TE combinations significant after
-BH correction; colour: median −log₁₀ FDR.
+BH correction; colour: median −log₁₀ FDR.  Fisher's exact test per TF × TE-class
+combination (58 TFs × 11 TE classes); BH-FDR 5% across all 638 combinations;
+only combinations with BH-corrected q < 0.05 and log₂ odds ratio > 0 are shown.
 Source data: Fig4I_tf_enrichment.
 
 **(J)** deepTools metaplot of HMGb3 (HMGb_1228) DAP-seq signal over LINE/I-Jockey
 TE insertions (Section 13.3).  Solid line: mean signal; shaded band: ± 1 s.e.m.;
-vertical dashed lines: TE body boundaries.
+vertical dashed lines: TE body boundaries.  Enrichment significance: permutation-based
+p-value comparing the observed mean signal over all LINE/I-Jockey loci against 1,000
+shuffled-peak controls; one-sided p shown in the panel.
 Source data: Fig4J_hmgb3_metaplot.
 
 **(K)** MEME motif logo for the HMGb3 binding motif enriched within LINE/I-Jockey
@@ -2087,7 +2102,10 @@ Source data: Fig5B_syntenic_blocks.
 
 **(C)** TE enrichment at WGD synteny breakpoints — log₂ fold-change over randomised
 windows, per TE superfamily, per species (Section 14.7).  Colour: BH-corrected
-significance; dot size: absolute log₂FC.
+significance; dot size: absolute log₂FC.  Statistical test: Wilcoxon rank-sum test
+comparing TE density (bp per window) at synteny breakpoint windows versus 10,000
+randomly placed windows of equal size per species; BH-FDR 5% across all
+superfamily × species combinations.
 Source data: Fig5C_te_breakpoints.
 
 **(D)** TE insertion age at WGD breakpoints vs. enrichment (n = 18 species; Section
@@ -2100,7 +2118,9 @@ Source data: Fig5D_te_dynamics.
 
 **(E)** TE–Ks age correlation — panel A: Spearman correlation between anchor-pair Ks
 (WGD age proxy) and TE superfamily burst mode, for species with reliable Ks estimates
-(Section 14.8).  Each point: one species × superfamily; colour: TE class.
+(Section 14.8).  Each point: one species × superfamily; colour: TE class.  Spearman
+rank correlation computed per TE superfamily across all WGD species; BH-corrected
+p per superfamily listed in source data Fig5E_te_ks_corr.
 Source data: Fig5E_te_ks_corr.
 
 ---
@@ -2126,56 +2146,224 @@ gene conservation) for validated LINE-class HTT events (Section 15.3).
 Source data: Fig6D_htt_line_synteny.
 
 
+### Supplementary Figures
+
+**Figure S1. Genomic feature variation across EDF clades and synteny statistics.**
+
+**(A)** Box plot of the mean number of introns per gene in multi-exon genes,
+per clade (Section 3.1; source: `GenomicFeatures_V3/ALL_SPECIES_ALL_SUMMARY_V4.txt`).
+Each box: interquartile range; whiskers: 1.5 × IQR.  Kruskal–Wallis H test across
+18 clades; post-hoc Dunn test with BH correction; significant pairwise differences
+(q < 0.05) indicated by brackets.
+Source data: FigS1A_introns_per_clade.
+
+**(B)** Per-clade box plots of corrected pairwise synteny ratios (Section 4.2).
+Ratio = observed collinear orthologue pairs / null expectation from random scaffold
+pairing; values > 1 indicate synteny above chance.  Kruskal–Wallis H test; BH-corrected
+Dunn test; n species per clade shown below each box.
+Source data: FigS1B_synteny_per_clade.
+
+**(C)** Same data as (B) but restricted to intra-clade species pairs, showing
+within-clade synteny conservation.
+Source data: FigS1C_synteny_intraclade.
+
+---
+
+**Figure S2. TE landscape supplementary — per-clade summaries.**
+
+**(A)** Per-clade box plots of total TE content (% genome; Section 7).  Format as
+Fig. S1A.  Kruskal–Wallis H test; BH-corrected Dunn test; clades sorted by median
+TE content.
+Source data: FigS2A_te_content_per_clade.
+
+**(B)** Stacked bar chart of TE high-level class composition for EDF-only clades
+(Section 7.1; source: `figures/clade_stacked_bars_EDF_only.pdf`).  Bars ordered by
+phylogenetic clade; colours as in Fig. 2A.
+Source data: FigS2B_te_class_edf_clades.
+
+**(C)** Shannon diversity H′ box plots per clade (Section 7.2).  Each box shows
+intra-clade variation; Kruskal–Wallis H test; BH-corrected Dunn test.
+Source data: FigS2C_shannon_per_clade.
+
+---
+
+**Figure S3. TE content correlates with genomic architecture.**
+
+**(A)** TE content (%) per species, coloured by clade (Section 3.1; source:
+`Section2_TElandscape/figure_species_data.tsv`).  Species ordered by phylogenetic
+position; the 18-clade colour scheme is used throughout.
+Source data: FigS3A_te_content_per_species.
+
+**(B)** Correlation heatmap: Pearson r between total TE content and six genomic
+features (genome size, gene count, intron density, exon content, %intronic, GC%;
+Section 3.2; source: `GenomicFeatures/correlations/heatmap_te_vs_features_raw_pearson.pdf`).
+Pearson r values shown in cells; BH-corrected p indicated by asterisks (* q < 0.05,
+** q < 0.01, *** q < 0.001).
+Source data: FigS3B_te_genomic_correlations.
+
+**(C)** Per-domain detail for the TE proximity analysis (Section 13.4; source:
+`expansion_analysis/results/proximity/proximity_raw.tsv`).  For each of the 41 domains
+in the expansion master list, plots show the distribution of gene–TE distances (bp) for
+domain-containing genes vs. all background genes in the same genome.  Mann–Whitney U
+test per species; BH correction across all domain × species combinations; mw_pval_vs_bg
+< 0.05 highlighted.
+Source data: FigS3C_proximity_per_domain.
+
+**(D)** TE copy number vs. TE content Spearman correlation per domain family
+(Section 13.4; source: `expansion_analysis/results/te_correlation_candidates.tsv`).
+Scatter plot: x-axis = Spearman ρ across all species; y-axis = BH-corrected p.
+Labelled points: domains with padj_rho_all < 0.05 and |ρ| > 0.3.
+Source data: FigS3D_te_copynumber_correlation.
+
+---
+
+**Figure S4. Nucleosome occupancy over TE insertions — multi-species summary.**
+
+**(A)** Meta-TE dyad probability profiles for the combined in vivo dataset (MNase-seq
++ MAINE-seq + ATAC-seq; Section 11.1).  Lines: mean dyad probability per TE class
+in ±2 kb windows centred on TE midpoints; shaded band: ±1 s.e.m.  DANPOS3 nucleosome
+calling applied uniformly across species.
+Source data: FigS4A_nucleosome_combined.
+
+**(B)** Cross-species and cross-clade nucleosome occupancy summaries (Section 11.2).
+Box plots of mean nucleosome dyad probability (per-copy) per TE class and per clade,
+for all species with NucSeq or MNase-seq data.
+Source data: FigS4B_nucleosome_cross_species.
+
+---
+
+**Figure S5. DNA methylation and histone marks — supplementary species and contexts.**
+
+**(A)** DNMT1 and DIM2 copy number versus total TE content in Mucoromycota species
+(Section 8.3; source: `TE_dynamics/dnmt_machinery/dnmt1dim2_vs_te_content_MU.pdf`).
+Scatter plot with Spearman ρ and BH-corrected p; each point is one species; circle
+size ∝ genome size.
+Source data: FigS5A_dnmt_te_mucoromycota.
+
+**(B)** 5mC analysis under dark-mycelium conditions (Section 9.3).  Same format as
+Fig. 3B–D applied to dark-condition WGBS data.  Kolmogorov–Smirnov (Q1 vs. Q4) and
+BH-corrected Mann–Whitney U tests as in Fig. 3C–D.
+Source data: FigS5B_5mc_dark_mycelium.
+
+**(C)** Per-species per-modification enrichment: fraction of TE copies enriched for
+5mC, H3K9me3, or N6mA, per TE superfamily and per species (Section 9.5).
+Heatmap rows: TE superfamilies with ≥ 30 covered copies; columns: species.
+Source data: FigS5C_enrichment_per_species.
+
+**(D)** 5mC across TE families: extended version of Fig. 3B including all annotated
+superfamilies (Section 9.3).  Coverage-weighted mean 5mC per superfamily × Kimura
+divergence bin.
+Source data: FigS5D_5mc_all_families.
+
+**(E)** Venn diagram summary of epigenetic marks (5mC, H3K9me3, N6mA) across species
+(Section 9.5).  Overlap proportions computed per species; mean across species shown
+with ±1 s.d. error bars.
+Source data: FigS5E_epigenetic_venn.
+
+---
+
+**Figure S6. Adjacent gene expression by TE family and sRNA targeting.**
+
+Scatter plot of TE superfamily mean sRNA RPM (y-axis) versus mean adjacent-gene
+expression log₂ RPKM (x-axis) per TE superfamily across all ChimeraTE-analysed species
+(Section 12.2; source: `TE_dynamics/48_adjacent_genes/48_family_summary_scatter_v2.pdf`).
+Each point is one TE superfamily; colour = TE class.  Spearman ρ and BH-corrected p
+shown; labelled points: superfamilies with |ρ| > 0.5 and padj < 0.05.
+Source data: FigS6_srna_adjacent_expr.
+
+---
+
+**Figure S7. Full HTT community chord diagram.**
+
+Chord diagram showing all 223 HTT candidate links across all 18 EDF clades
+(Section 15; source: `HTT/figures/figHTT_chord.pdf`), including both validated and
+unvalidated candidates.  Arc width ∝ number of HTT candidates between each clade pair;
+clade colours follow the 18-clade scheme used throughout.  TE class enrichment among
+all HTT candidates tested by hypergeometric test against the background TE class
+frequency across all genomes; LINE elements are significantly enriched
+(obs/expected = 2.11, log₂ = 1.08; residual = 9.26; source:
+`HTT/figures/figHTT_te_enrichment.tsv`).
+Source data: FigS7_htt_full_chord.
+
+---
+
 ## Part III — Source Data Index
 
 The Excel workbook `EDF-TE_source_data.xlsx` contains one sheet per figure panel.
 Each sheet provides the numerical data underlying one or more figure panels as
 described below.
 
-| Sheet name | Figure panel(s) | Description | Key columns |
-|---|---|---|---|
-| Fig1A_tree | Fig. 1A | Species tree tip metadata | species, clade, clade_colour, bootstrap_support |
-| Fig1B_pangenome | Fig. 1B | Pangenome accumulation curve data | group, n_genomes, n_core, n_shell, n_unique, n_pangenome, mean, sd, permutation_id |
-| Fig1C_genomic_features | Fig. 1C | Per-species genomic feature metrics | species, clade, Pct_Exonic, Pct_Intronic, Avg_Introns_Multiexon, Total_Genes |
-| Fig1D_synteny | Fig. 1D | Corrected synteny ratio per species pair | species_A, species_B, clade, observed_collinear_pairs, null_mean_collinear, total_adjacent_slots, corrected_score, normalised_score |
-| Fig2A_te_content | Fig. 2A | TE class composition + Shannon + RI per species | species, clade, total_te_pct, DNA_pct, LTR_pct, LINE_pct, shannon_H, RI |
-| Fig2B_pca_composition | Fig. 2B | PCA of TE class composition | species, clade, PC1, PC2, var_explained_PC1, var_explained_PC2 |
-| Fig2C_kimura_ri | Fig. 2C | Recency Index per species | species, clade, RI, n_te_bp_total |
-| Fig2D_kimura_summary | Fig. 2D | Mean Kimura divergence per superfamily × species | species, clade, superfamily, mean_kimura, n_copies |
-| Fig2E_proximity_scatter | Fig. 2E | Gene-TE proximity scatter (41 domains) | domain_id, domain_name, te_class, log_proximity_p, log_copies_in_te |
-| Fig2F_proximity_flanks | Fig. 2F | TE subfamily in symmetric flanks (41 domains) | domain_id, te_superfamily, te_class, pct_flanking_te, n_flanking_copies |
-| Fig2G_sex_locus | Fig. 2G | Sex locus MAT architecture and TE composition | species, clade, mat_locus_genes, te_superfamily, te_pct |
-| Fig2H_sex_locus_synteny | Fig. 2H | Sex locus microsynteny between Fenestella and Phycomyces | gene_A, gene_B, species_A, species_B, link_colour, scaffold_A, scaffold_B |
-| Fig3A_dnmt | Fig. 3A | DNMT copy number per species + TE content | species, clade, DNMT1_n, DIM2_n, RID_DNMT2_n, total_te_pct |
-| Fig3B_5mc_family_age | Fig. 3B | Weighted-mean 5mC per TE family × age bin | species, family, age_bin_kimura, wm_5mC, n_copies_covered |
-| Fig3C_gene_dist_5mc | Fig. 3C | Gene–TE distance by methylation quartile | species, distance_bp, quartile, n_copies |
-| Fig3D_adj_expr_meth | Fig. 3D | Adjacent gene expression by methylation quartile | species, gene_id, te_id, quartile, log2_rpkm |
-| Fig3E_gene_dist_h3k9 | Fig. 3E | Gene–TE distance by H3K9me3 enrichment class | species, distance_bp, h3k9_class, n_copies |
-| Fig3F_adj_expr_h3k9 | Fig. 3F | Adjacent gene expression by H3K9me3 peak | species, gene_id, te_id, h3k9_peak_present, log2_rpkm |
-| Fig3G_mac_tss | Fig. 3G | TE expression grouped by MAC at TSS (Phycomyces + Rhizopus, mycelium dark) | species, condition, te_id, mac_at_tss, log2_rpkm |
-| Fig3H_metaplot | Fig. 3H | Per-bin 5mC across TE bodies (Q1 vs Q4) | superfamily, bin_index, quartile, mean_5mC, sem_5mC, n_copies |
-| Fig3I_mac_tss_families | Fig. 3I | TE families at methylated adenine cluster TSS | species, superfamily, n_mac_tss_overlaps, enrichment_ratio, BH_q |
-| Fig3J_rnai_pies | Fig. 3J | RNAi pathway targeting proportions | species, te_superfamily, rnai_status, proportion |
-| Fig3K_srna | Fig. 3K | sRNA abundance vs. TE expression per superfamily | species, superfamily, srna_rpm, te_rpkm, srna_status |
-| Fig4A_cooption_tree | Fig. 4A | Co-option gain/loss per node and total OGs per clade tip | node_id, clade, n_ancestral_retained, n_newly_acquired, n_total_og_tip |
-| Fig4B_domain_barchart | Fig. 4B | Host-function domain composition of co-opted genes | clade, pfam_domain, domain_desc, n_coopted_genes, fraction |
-| Fig4C_te_class_prop | Fig. 4C | TE class origin of co-opted genes per clade | clade, te_class, n_coopted, fraction |
-| Fig4D_fusion_network | Fig. 4D | Fusion protein network edge list | te_domain_ipr, host_domain_ipr, n_proteins, n_species, species_list |
-| Fig4E_chimte | Fig. 4E | ChimeraTE chimeric junctions per species | species, clade, te_class, n_chimeric_junctions |
-| Fig4FG_fusion_trees | Fig. 4F–G | FLYWCH and CotH fusion protein tree metadata | protein_id, species, clade, te_superfamily, fusion_type |
-| Fig4H_dam_rt_tree | Fig. 4H | DAM methyltransferase + RT protein metadata | protein_id, species, clade, te_superfamily, domain_arch |
-| Fig4I_tf_enrichment | Fig. 4I | TF peak enrichment in TE classes (DAP-seq) | te_class, motif_id, motif_family, log2_odds_ratio, fisher_pval, BH_q |
-| Fig4J_hmgb3_metaplot | Fig. 4J | HMGb3 signal metaplot over LINE/I-Jockey | bin_index, mean_signal, sem_signal, te_class |
-| Fig4L_hmgb3_heatmap | Fig. 4L | HMGb3 occupancy across Jockey clades | clade, te_subfamily, mean_norm_signal |
-| Fig5A_paralogs | Fig. 5A | Gene duplication rates and co-linear paralog counts | species, node_id, dup_rate, n_colinear_paralogs |
-| Fig5B_syntenic_blocks | Fig. 5B | Syntenic block composition and TE content | species, block_id, block_length_bp, te_bp, te_fraction |
-| Fig5C_te_breakpoints | Fig. 5C | TE enrichment at WGD breakpoints (log₂FC) | species, superfamily, log2_fc, wilcoxon_p, BH_q |
-| Fig5D_te_age_breakpoints | Fig. 5D | TE insertion age vs. enrichment at WGD breakpoints | species, delta_kimura80, log2_fc_breakpoint, spearman_rho, spearman_p |
-| Fig5E_te_ks_corr | Fig. 5E | TE superfamily burst vs. WGD Ks correlation | species, superfamily, te_burst_ks_mode, anchor_ks_median, spearman_rho, spearman_p |
-| Fig6A_htt_chord | Fig. 6A | HTT candidate and validated event counts per clade pair | clade_A, clade_B, n_candidates, n_validated, arc_width |
-| Fig6B_htt_ks | Fig. 6B | Ks distribution of 223 HTT candidates | candidate_id, te_class, te_superfamily, Ks_value |
-| Fig6C_htt_heatmap | Fig. 6C | HTT candidate count heat-map per clade pair | clade_A, clade_B, n_candidates |
-| Fig6D_htt_line_synteny | Fig. 6D | LINE HTT locus flanking conservation | event_id, species_A, species_B, flank_gene_A, flank_gene_B, conservation_status |
+### Main figures
+
+| Sheet name | Figure panel(s) | Description | Key columns | Primary data source |
+|---|---|---|---|---|
+| Fig1A_tree | Fig. 1A | Species tree tip metadata | species, clade, clade_colour, bootstrap_support | `SpeciesTree/` newick + clade assignments |
+| Fig1B_pangenome | Fig. 1B | Pan-genome accumulation curve data (mean ± s.d. per group at each species count) | group_code, group_name, n_species, pangenome, core, shell, unique | `PanGenome/results/summary_final_counts.tsv`; per-group curves in `PanGenome/results/per_group/{group}_pangenome.tsv` (columns: n, pangenome_mean, pangenome_sd, core_mean, core_sd, shell_mean, shell_sd, unique_mean, unique_sd) |
+| Fig1C_genomic_features | Fig. 1C | Per-species genomic feature metrics | species, clade, Genome_Size_bp, Total_Genes, Total_Introns, Avg_Exons_Per_Gene, Avg_Introns_All, Avg_Isoforms_Per_Gene | `GenomicFeatures_V3/ALL_SPECIES_ALL_SUMMARY_V4.txt` |
+| Fig1D_synteny | Fig. 1D | Corrected synteny ratio per species pair | species_A, species_B, clade, observed_collinear_pairs, null_mean_collinear, total_adjacent_slots, corrected_score, normalised_score | `Synteny/results/synteny_summary.tsv` |
+| Fig2A_te_content | Fig. 2A | TE class composition + Shannon H′ + Recency Index per species | taxon, clade, pct_realTE, pct_ClassI, pct_ClassII, pct_TE_total, pct_unknown | `Section2_TElandscape/figure_species_data.tsv`; Shannon H′ and RI from `B01_shannon_diversity.tsv` and `C01_kimura_species.tsv` |
+| Fig2B_pca_composition | Fig. 2B | PCoA of TE high-level class composition (Bray–Curtis) | species, clade, PCo1, PCo2, PCo3 | `Section2_TElandscape/G01_pcoa_coords.tsv` |
+| Fig2C_kimura_ri | Fig. 2C | Recency Index per species and Kruskal–Wallis + Dunn test results | species, clade, recency_index, burst_score, mean_div_weighted, n_superfamilies, total_te_bp | `Section2_TElandscape/C01_kimura_species.tsv` |
+| Fig2D_kimura_summary | Fig. 2D | Mean Kimura divergence per TE superfamily × species | species, superfamily, total_bp, pct_of_TE, recency_index, mean_div_weighted, n_families | `Section2_TElandscape/C01_kimura_superfamily.tsv` |
+| Fig2E_proximity_scatter | Fig. 2E | Gene–TE proximity scatter (41 candidate domains) | pfam, domain_name, te_class, mw_pval_copynumber, n_pack_element_candidates, n_fusion_proteins, n_te_consensus_with_domain, mechanism | `expansion_analysis/results/figures/labeled_domains_metrics.tsv` |
+| Fig2F_proximity_flanks | Fig. 2F | TE subfamily in symmetric flanks of domain-expanded genes | species, clade, pfam, domain_name, n_copies, pct_nearest_is_te, bg_pct_nearest_is_te, mw_pval_vs_bg | `expansion_analysis/results/proximity/proximity_summary.tsv` |
+| Fig2G_sex_locus | Fig. 2G | Sex locus MAT architecture and TE composition | species, clade, mat_locus_genes, te_superfamily, te_pct | `MAT_locus/figures/sex_locus_figure.pdf` (numerical data in `MAT_locus/results/`) |
+| Fig2H_sex_locus_synteny | Fig. 2H | Sex locus microsynteny between *Fenestella* sp. and *Phycomyces blakesleeanus* | gene_A, gene_B, species_A, species_B, link_colour, scaffold_A, scaffold_B | `Synteny/results/sex_locus_synteny_links.tsv` |
+| Fig3A_dnmt | Fig. 3A | DNMT copy number per species + total TE content | species, clade, DNMT1_n, DIM2_n, RID_DNMT2_n, total_te_pct | `DAM_search/results/methylase_cooption_summary.tsv` |
+| Fig3B_5mc_family_age | Fig. 3B | Coverage-weighted mean 5mC per TE family × Kimura age bin | species, family, age_bin_kimura, wm_5mC, n_copies_covered | `TE_analysis/WGBS/te_methylation_per_copy.tsv` |
+| Fig3C_gene_dist_5mc | Fig. 3C | Gene–TE distance distribution by 5mC methylation quartile; KS D and BH-p for Q1 vs Q4 | species, distance_bp, quartile, n_copies | `TE_analysis/WGBS/te_methylation_per_copy.tsv` + gene annotation |
+| Fig3D_adj_expr_meth | Fig. 3D | Adjacent gene expression (log₂ RPKM) by methylation quartile; BH-corrected Mann–Whitney U | species, gene_id, te_id, quartile, log2_rpkm | `TE_analysis/WGBS/adjacent_gene_expression_by_quartile.tsv` |
+| Fig3E_gene_dist_h3k9 | Fig. 3E | Gene–TE distance by H3K9me3 enrichment class; KS D and BH-p for Q1 vs Q4 | species, distance_bp, h3k9_class, n_copies | `TE_analysis/ChIP/te_h3k9_gene_dist.tsv` |
+| Fig3F_adj_expr_h3k9 | Fig. 3F | Adjacent gene expression by H3K9me3 peak presence/absence; BH-corrected Mann–Whitney U | species, gene_id, te_id, h3k9_peak_present, log2_rpkm | `TE_analysis/ChIP/adjacent_gene_h3k9_expression.tsv` |
+| Fig3G_mac_tss | Fig. 3G | TE expression grouped by MAC at TSS; Mann–Whitney U BH-p | species, condition, te_id, mac_at_tss, log2_rpkm | `TE_analysis/N6mA/mac_tss_te_expression.tsv` |
+| Fig3H_metaplot | Fig. 3H | Per-bin mean 5mC across TE bodies (Q1 vs Q4) | superfamily, bin_index, quartile, mean_5mC, sem_5mC, n_copies | `TE_analysis/WGBS/metaplot_5mc_bins.tsv` |
+| Fig3I_mac_tss_families | Fig. 3I | TE families enriched at methylated TSS; hypergeometric q and enrichment ratio | species, superfamily, n_mac_tss_overlaps, enrichment_ratio, BH_q | `TE_analysis/N6mA/mac_tss_family_enrichment.tsv` |
+| Fig3J_rnai_pies | Fig. 3J | RNAi pathway targeting proportions per TE superfamily | species, te_superfamily, rnai_status, proportion | `TE_analysis/sRNA/rnai_te_proportions.tsv` |
+| Fig3K_srna | Fig. 3K | sRNA RPM vs. TE expression per superfamily | species, superfamily, srna_rpm, te_rpkm, srna_status | `TE_analysis/sRNA/srna_te_rpm.tsv` |
+| Fig4A_cooption_tree | Fig. 4A | Co-option gain/loss per node and total orthogroups per clade | node_id, clade, n_ancestral_retained, n_newly_acquired, n_total_og_tip | `Co-option/figures/14_cooption_traits.tsv` |
+| Fig4B_domain_barchart | Fig. 4B | Host-function Pfam domain composition of co-opted genes per clade | clade, pfam_domain, domain_desc, n_coopted_genes, fraction | `expansion_analysis/results/clade_expansion_table.tsv` |
+| Fig4C_te_class_prop | Fig. 4C | TE class origin of co-opted genes per clade | clade, te_class, n_coopted, fraction | `Co-option/per_species/classification/*.true_TE_coopted_genes.tsv` (aggregated) |
+| Fig4D_fusion_network | Fig. 4D | Fusion protein network edge list (host domain × TE domain co-occurrence) | te_domain_ipr, host_domain_ipr, n_proteins, n_species, species_list | `expansion_analysis/results/figures/Supplementary_Table_S_fusion_combos.tsv` |
+| Fig4E_chimte | Fig. 4E | ChimeraTE chimeric gene–TE junction counts per species | species, clade, te_class, n_chimeric_junctions | `Co-option/chimte_summary.tsv` |
+| Fig4F_flywch_trees | Fig. 4F | FLYWCH × TE-RT fusion protein phylogeny metadata | protein_id, species, clade, te_superfamily, fusion_type, n_fusion_proteins | `expansion_analysis/results/figures/labeled_domains_metrics.tsv` (PF04500 rows) + `expansion_analysis/results/phylo/PF04500*.nwk` |
+| Fig4G_coth_trees | Fig. 4G | CotH × TE fusion protein phylogeny metadata | protein_id, species, clade, te_superfamily, fusion_type, n_fusion_proteins | `expansion_analysis/results/figures/labeled_domains_metrics.tsv` (PF05731 rows) + `expansion_analysis/results/phylo/PF05731*.nwk` |
+| Fig4H_dam_rt_tree | Fig. 4H | DAM methyltransferase + RT protein metadata for circular phylogeny | species, clade, te_class, source, DAM_evalue, RT_evalue, rep_orf, orf_length_aa, domain_architecture | `DAM_search/results/DAM_TE_summary_table_annotated.tsv`; tree: `DAM_search/results/phylo/DAM_aln.faa` |
+| Fig4I_tf_enrichment | Fig. 4I | TF peak enrichment in TE classes (DAP-seq, 58 TFs); Fisher's exact test BH-q | te_class, motif_id, motif_family, log2_odds_ratio, fisher_pval, BH_q | `TF_TE_analysis/03_fimo_enrichment/fimo_enrichment.tsv` |
+| Fig4J_hmgb3_metaplot | Fig. 4J | HMGb3 DAP-seq signal metaplot over LINE/I-Jockey; permutation p | bin_index, mean_signal, sem_signal, te_class | `TF_TE_analysis/02_bigwig_signal/bw_TE_signal_class_mean.tsv` (HMGb_1228 rows) |
+| Fig4L_hmgb3_heatmap | Fig. 4L | HMGb3 occupancy across Jockey clade × subfamily | clade, te_subfamily, mean_norm_signal | `TF_TE_analysis/02_bigwig_signal/` |
+| Fig5A_paralogs | Fig. 5A | Gene duplication rates and co-linear paralog counts per WGD-candidate species | species, node_id, dup_rate_per_eligible_tree, n_colinear_paralog_pairs, wgd_classification, ks_median | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/duplication_rates_by_node_normalized.tsv` + `synteny_summary.tsv` |
+| Fig5B_syntenic_blocks | Fig. 5B | Syntenic block structure and TE content per WGD species | species, block_id, block_length_bp, te_bp, te_fraction | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/synteny_summary.tsv` |
+| Fig5C_te_breakpoints | Fig. 5C | TE enrichment at WGD synteny breakpoints; Wilcoxon rank-sum BH-q | species, superfamily, log2_fc, wilcoxon_p, BH_q, obs_te_bp_per_window, bg_te_bp_per_window | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/te_breakpoint_enrichment/` per-species TSVs |
+| Fig5D_te_age_breakpoints | Fig. 5D | TE insertion age (ΔKimura80) vs. enrichment at WGD breakpoints; Spearman ρ = −0.58, p = 0.012 | species, delta_kimura80, log2_fc_breakpoint, spearman_rho, spearman_p | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/te_breakpoint_enrichment/` + Kimura data |
+| Fig5E_te_ks_corr | Fig. 5E | TE superfamily burst mode vs. anchor-Ks WGD age; Spearman ρ per superfamily | species, superfamily, te_burst_ks_mode, anchor_ks_median, spearman_rho, BH_padj | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/ks_analysis/` anchor Ks files + `C01_kimura_superfamily.tsv` |
+| Fig6A_htt_chord | Fig. 6A | HTT validated-event counts per clade pair (chord diagram) | clade_A, clade_B, n_candidates, n_validated, arc_width | `HTT/06_htt_candidates/htt_candidates/htt_by_clade_pair.tsv` |
+| Fig6B_htt_ks | Fig. 6B | Ks distribution of HTT candidates by TE class | pair_id, qclade, sclade, te_class, te_ks, is_htt | `HTT/06_htt_candidates/htt_candidates/htt_candidates.tsv` |
+| Fig6C_htt_heatmap | Fig. 6C | HTT candidate count heat-map per clade pair (triangular matrix) | qclade, sclade, htt_count | `HTT/06_htt_candidates/htt_candidates/htt_by_clade_pair.tsv` |
+| Fig6D_htt_line_synteny | Fig. 6D | LINE HTT locus flanking gene conservation | event_id, species_A, species_B, flank_gene_A, flank_gene_B, conservation_status | `HTT/09_minimal_htt_events/events/` per-component TSVs |
+
+### Supplementary figures
+
+| Sheet name | Figure panel(s) | Description | Key columns | Primary data source |
+|---|---|---|---|---|
+| FigS1A_introns_per_clade | Fig. S1A | Mean introns per multi-exon gene per species, grouped by clade | species, clade, Avg_Introns_All, Total_Genes, Total_Introns | `GenomicFeatures_V3/ALL_SPECIES_ALL_SUMMARY_V4.txt` |
+| FigS1B_synteny_per_clade | Fig. S1B | Corrected pairwise synteny ratios per clade (all inter-species pairs) | species_A, species_B, clade, corrected_score | `Synteny/results/synteny_summary.tsv` |
+| FigS1C_synteny_intraclade | Fig. S1C | Corrected synteny ratios restricted to intra-clade pairs | species_A, species_B, clade, corrected_score | `Synteny/results/synteny_summary.tsv` (intra-clade filter) |
+| FigS2A_te_content_per_clade | Fig. S2A | Total TE content (%) per species grouped by clade | taxon, clade, pct_realTE, pct_TE_total | `Section2_TElandscape/figure_species_data.tsv` |
+| FigS2B_te_class_edf_clades | Fig. S2B | TE class composition stacked bars for EDF-only clades | clade, te_class, pct_of_te_content | `Section2_TElandscape/figure_species_data.tsv` (EDF-clade filter) |
+| FigS2C_shannon_per_clade | Fig. S2C | Shannon H′ TE diversity per species grouped by clade | species, clade, H_prime, J_evenness, n_superfamilies, dominant_superfamily | `Section2_TElandscape/B01_shannon_diversity.tsv` |
+| FigS3A_te_content_per_species | Fig. S3A | Total TE content per species, ordered phylogenetically | taxon, clade, pct_realTE, pct_TE_total, genome_size_mb | `Section2_TElandscape/figure_species_data.tsv` |
+| FigS3B_te_genomic_correlations | Fig. S3B | Pearson r between TE content and genomic features; BH-corrected p | feature_A, feature_B, pearson_r, p_raw, BH_q | `GenomicFeatures_V3/ALL_SPECIES_ALL_SUMMARY_V4.txt` (computed pairwise) |
+| FigS3C_proximity_per_domain | Fig. S3C | Per-domain gene–TE distance distributions; Mann–Whitney U BH-p | gene_id, species, domain, dist_to_nearest_te, mw_pval_vs_bg | `expansion_analysis/results/proximity/proximity_summary.tsv` |
+| FigS3D_te_copynumber_correlation | Fig. S3D | Spearman ρ between TE copy number and TE content per domain family | pfam, domain_desc, target_clade, rho_all_spp, p_all_spp, padj_rho_all, rho_clade, p_clade | `expansion_analysis/results/te_correlation_candidates.tsv` |
+| FigS4A_nucleosome_combined | Fig. S4A | Meta-TE dyad probability profiles — combined MNase+MAINE+ATAC dataset | te_class, bin_index, mean_dyad_prob, sem_dyad_prob, n_copies_contributing | `TE_analysis/MNase/meta_te_dyad_profile_combined.tsv` |
+| FigS4B_nucleosome_cross_species | Fig. S4B | Per-copy mean dyad probability per TE class × species | species, te_class, mean_dyad_prob, n_copies | `TE_analysis/MNase/nucleosome_bias_summary.tsv` |
+| FigS5A_dnmt_te_mucoromycota | Fig. S5A | DNMT1/DIM2 copy number vs. TE content in Mucoromycota; Spearman ρ | species, DNMT1_n, DIM2_n, total_te_pct, genome_size_mb | `DAM_search/results/methylase_cooption_summary.tsv` (Mucoromycota filter) |
+| FigS5B_5mc_dark_mycelium | Fig. S5B | 5mC per TE copy (dark-mycelium condition); KS and Mann–Whitney U | species, te_copy_id, te_class, kimura_div, kimura_quartile, pct_methylated | `TE_analysis/WGBS/te_methylation_dark_mycelium.tsv` |
+| FigS5C_enrichment_per_species | Fig. S5C | Fraction of TE copies enriched for 5mC/H3K9me3/N6mA per superfamily × species | species, superfamily, pct_5mC, pct_H3K9me3, pct_N6mA, n_copies | Per-species enrichment tables in `TE_analysis/` subdirectories |
+| FigS5D_5mc_all_families | Fig. S5D | Coverage-weighted mean 5mC per superfamily × Kimura bin (all families) | species, superfamily, age_bin_kimura, wm_5mC, n_copies_covered | `TE_analysis/WGBS/te_methylation_per_copy.tsv` |
+| FigS5E_epigenetic_venn | Fig. S5E | Overlap of 5mC, H3K9me3, N6mA marks per species | species, pct_5mC_only, pct_H3K9_only, pct_N6mA_only, pct_5mC_H3K9, pct_all_three | Aggregated from per-species methylation tables |
+| FigS6_srna_adjacent_expr | Fig. S6 | TE superfamily sRNA RPM vs. adjacent-gene expression; Spearman ρ | species, superfamily, mean_srna_rpm, mean_adj_log2_rpkm, spearman_rho, BH_padj | `TE_analysis/sRNA/srna_vs_adjacent_gene_family_summary.tsv` |
+| FigS7_htt_full_chord | Fig. S7 | Full HTT community: all 223 candidates per clade pair; LINE enrichment | qclade, sclade, htt_count, dominant_te_class, obs, expected, log2_obs_exp | `HTT/06_htt_candidates/htt_candidates/htt_by_clade_pair.tsv` + `HTT/figures/figHTT_te_enrichment.tsv` |
 
 All numerical values are the direct inputs to the corresponding figure panels.
 Processed intermediate tables are available in the per-section `results/`
