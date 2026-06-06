@@ -1355,7 +1355,7 @@ def build_figS5e(writer):
 
 
 def build_figS5f(writer):
-    """FigS5F_srna_h3k9_pie_per_superfamily: sRNA/H3K9 co-targeting by superfamily."""
+    """FigS5F_srna_h3k9_pie: sRNA/H3K9 co-targeting by superfamily."""
     for p in [
         TE_DYN_DIR / "36_epigenetic_summary" / "summary_table_with_srna.tsv",
         TE_DYN_DIR / "35_srna_mucor" / "plots" / "35g_coregulated_te_classes.tsv",
@@ -1380,7 +1380,7 @@ def build_figS5f(writer):
         "pct_srna_only": "% targeted exclusively by sRNA",
         "pct_srna_h3k9": "% co-targeted by both sRNA and H3K9me3",
     }
-    write_sheet(writer, df, "FigS5F_srna_h3k9_pie_per_superfamily", units)
+    write_sheet(writer, df, "FigS5F_srna_h3k9_pie", units)
 
 
 def build_figS6a(writer):
@@ -1490,7 +1490,7 @@ def build_figS7a(writer):
 
 
 def build_figS7b(writer):
-    """FigS7B_cooption_intron_comparison: introns per gene, co-opted vs non-co-opted."""
+    """FigS7B_cooption_introns: introns per gene, co-opted vs non-co-opted."""
     path = EXP_RESULTS / "proximity" / "proximity_summary.tsv"
     df = safe_read(path)
     if df is not None:
@@ -1507,7 +1507,7 @@ def build_figS7b(writer):
         "cooption_status": "co-opted vs non-co-opted",
         "n_introns": "number of introns per gene",
     }
-    write_sheet(writer, df, "FigS7B_cooption_intron_comparison", units)
+    write_sheet(writer, df, "FigS7B_cooption_introns", units)
 
 
 def build_figS7c(writer):
@@ -1660,7 +1660,7 @@ def build_figS9c(writer):
 
 
 def build_figS10a(writer):
-    """FigS10A_te_content_vs_bp_enrichment: TE content vs breakpoint enrichment."""
+    """FigS10A_te_vs_bp_enrich: TE content vs breakpoint enrichment."""
     te_path = TE_LANDSCAPE_DIR / "figure_species_data.tsv"
     bp_dir = WGD_DIR / "te_breakpoint_enrichment"
     te_df = safe_read(te_path)
@@ -1683,7 +1683,7 @@ def build_figS10a(writer):
         "adj_p": "adjusted p-value",
         "beta_coefficient": "regression coefficient β = 0.20",
     }
-    write_sheet(writer, df, "FigS10A_te_content_vs_bp_enrichment", units)
+    write_sheet(writer, df, "FigS10A_te_vs_bp_enrich", units)
 
 
 def build_figS10b(writer):
@@ -1842,12 +1842,12 @@ SHEETS = [
     ("FigS5C_enrichment_per_species", build_figS5c),
     ("FigS5D_epigenetic_per_family", build_figS5d),
     ("FigS5E_h3k9me3_srna_venn", build_figS5e),
-    ("FigS5F_srna_h3k9_pie_per_superfamily", build_figS5f),
+    ("FigS5F_srna_h3k9_pie", build_figS5f),
     ("FigS6A_5mc_rna_corr", build_figS6a),
     ("FigS6B_6ma_rna_corr_rmicro", build_figS6b),
     ("FigS6C_6ma_rna_corr_alt", build_figS6c),
     ("FigS7A_cooption_pct_per_clade", build_figS7a),
-    ("FigS7B_cooption_intron_comparison", build_figS7b),
+    ("FigS7B_cooption_introns", build_figS7b),
     ("FigS7C_duf_interaction_networks", build_figS7c),
     ("FigS7D_orf_te_fusion_bar", build_figS7d),
     ("FigS7E_nacht_fusion_phylogeny", build_figS7e),
@@ -1855,7 +1855,7 @@ SHEETS = [
     ("FigS9A_dam_rt_phylo", build_figS9a),
     ("FigS9B_gypsy_rt_cladogram", build_figS9b),
     ("FigS9C_gypsy_hmgb3_structure", build_figS9c),
-    ("FigS10A_te_content_vs_bp_enrichment", build_figS10a),
+    ("FigS10A_te_vs_bp_enrich", build_figS10a),
     ("FigS10B_bp_enrichment_volcano", build_figS10b),
     ("FigS10C_bp_multiplicon_pct", build_figS10c),
     ("FigS11A_htt_te_class_per_clade", build_figS11a),

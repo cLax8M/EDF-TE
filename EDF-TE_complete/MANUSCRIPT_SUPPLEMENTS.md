@@ -467,14 +467,23 @@ Shannon boxplots per clade are shown in Fig. S2C
 
 #### 8.1 Domain-based DNMT classification
 
-DNMT1-type, DIM2-type, and RID/DNMT2-type DNA methyltransferases were identified in all
-320 predicted proteomes using InterProScan 5.67-99.0 (Pfam 36.0 database).  For each
-protein, the presence of the following Pfam domains was recorded: C5MT catalytic domain
-(PF00145), RFTS replication foci targeting sequence, BAH bromo-adjacent homology,
-DNAmet_Nter N-terminal methyltransferase extension, Helicase_C, SNF2_N, and PHD finger.
-Per-species copy numbers and domain architectures were compiled in `dnmt_matrix_final.tsv`
-(`TE_dynamics/dnmt_machinery/data/`).  The DNMT1 vs. DIM2 vs. RID classification was
-based on combinations of these domains following Iyer *et al.* (2011).
+DNMT1-type, DIM2-type, and RID/DNMT2-type DNA methyltransferases were identified
+by a multi-step approach combining domain screening and phylogenetic classification.
+First, all proteins containing the C5-cytosine methyltransferase catalytic domain
+(PF00145) were retrieved from InterProScan 5.67-99.0 (Pfam 36.0) annotations of
+all 320 predicted proteomes.  These candidate proteins were then searched by
+reciprocal BLASTP (BLAST+ 2.12.0; E ≤ 10⁻⁵) against a curated set of reference
+DNMT1, DIM-2, and RID/DNMT2 sequences from characterised fungal species
+(`TE_dynamics/dnmt_machinery/scripts/31_extract_all_C5MT.py`).  The resulting
+hits were aligned with MAFFT v7.520 (`--localpair --maxiterate 1000`), trimmed
+with trimAl v1.4 (`-gappyout`), and used to build a maximum-likelihood phylogeny
+(IQ-TREE2, LG+G4 model, 1,000 UFBoot).  Orthology was assigned based on
+monophyletic clustering with the reference sequences.  For each protein, the
+presence of additional diagnostic domains (RFTS, BAH, DNAmet_Nter, Helicase_C,
+SNF2_N, PHD, Chromo) was recorded.  Per-species copy numbers and domain
+architectures were compiled in `dnmt_matrix_final.tsv`
+(`TE_dynamics/dnmt_machinery/data/`).  The DNMT1 vs. DIM2 vs. RID classification
+followed Iyer *et al.* (2011) domain combination rules.
 
 The species tree was annotated with per-species DNMT copy numbers and TE content
 (% genome) from `dnmt_matrix_final.tsv` and `te_content_wide.tsv` (Fig. 3A;
@@ -2323,7 +2332,7 @@ copies): Gypsy (n = 1,833; 41%/54%), Copia (n = 489; 42%/57%), Other LTR (n = 59
 43%/57%), PIF-Harbinger (n = 158; 33%/66%), MULE (n = 192; 38%/62%), EnSpm
 (n = 307; 41%/59%), PiggyBac (n = 71; 42%/55%), hAT (n = 311; 43%/57%), Polinton
 (n = 149; 44%/55%).
-Source data: FigS5F_srna_h3k9_pie_per_superfamily.
+Source data: FigS5F_srna_h3k9_pie.
 
 ---
 
@@ -2362,7 +2371,7 @@ Source data: FigS7A_cooption_pct_per_clade.
 non-co-opted (light grey) genes per clade (15 clades; n values per pair shown;
 y-axis 0–40+ introns/gene; Section 13.2).
 Significance: ** p < 0.01, *** p < 0.001 (Wilcoxon signed-rank test, BH correction).
-Source data: FigS7B_cooption_intron_comparison.
+Source data: FigS7B_cooption_introns.
 
 **(C)** Domain interaction network diagrams (node-link graphs) for **DUF4208**,
 **DUF3535**, and **DUF4217**.  Central white node = focal DUF domain; surrounding
@@ -2431,7 +2440,7 @@ Dashed regression line; **regression coefficient β = 0.20.**  Reference lines a
 y = 0 (no enrichment) and y = 1 (2-fold enrichment).  Labeled data points:
 *R. delemar* (Rd), *F. linderi* (Fr), *P. articulosus* (Pa), *C. cucurbitarum* (Cc),
 *C. brefeldii* (Cb).
-Source data: FigS10A_te_content_vs_bp_enrichment.
+Source data: FigS10A_te_vs_bp_enrich.
 
 **(B)** Volcano plots of TE superfamily enrichment at synteny breakpoints (log₂FC,
 x-axis; −log₁₀ adjusted p-value, y-axis; red dashed significance threshold) for five
@@ -2547,12 +2556,12 @@ described below.
 | FigS5C_enrichment_per_species | Fig. S5C | Log₂ TE class enrichment in 5mC/H3K9me3/6mA per species | species, mark, te_class, log2_fc_enrichment | Per-species enrichment tables in `TE_analysis/` subdirectories |
 | FigS5D_epigenetic_per_family | Fig. S5D | Epigenetic mark levels per TE family for 5 mark × species contexts | species, mark, te_family, mean_enrichment, n_copies | `TE_analysis/WGBS/`, `TE_analysis/ChIP/`, `TE_analysis/N6mA/` per-family summaries |
 | FigS5E_h3k9me3_srna_venn | Fig. S5E | Venn diagram: H3K9me3-enriched vs. sRNA-targeted TE loci; overlap = 784 | locus_id, h3k9me3_enriched, srna_targeted, n_exclusive_h3k9, n_exclusive_srna, n_overlap | `TE_analysis/ChIP/` + `TE_analysis/sRNA/` overlap table |
-| FigS5F_srna_h3k9_pie_per_superfamily | Fig. S5F | Proportion of TE copies co-targeted by sRNA+H3K9me3 vs. sRNA-only, per superfamily | superfamily, n_copies, pct_srna_only, pct_srna_h3k9 | `TE_analysis/sRNA/srna_h3k9_overlap_by_superfamily.tsv` |
+| FigS5F_srna_h3k9_pie | Fig. S5F | Proportion of TE copies co-targeted by sRNA+H3K9me3 vs. sRNA-only, per superfamily | superfamily, n_copies, pct_srna_only, pct_srna_h3k9 | `TE_analysis/sRNA/srna_h3k9_overlap_by_superfamily.tsv` |
 | FigS6A_5mc_rna_corr | Fig. S6A | Pearson r (Δ5mC vs. Δ RNA) per TE family, 5mC context; TcMar-Sagan r = 0.41 p = 0.023 n = 24; RTE-BovB r = −0.36 p = 0.04 n = 24 | te_family, pearson_r, p_val, n_comparisons, condition | `TE_analysis/WGBS/condition_meth_rna_corr.tsv` |
 | FigS6B_6ma_rna_corr_rmicro | Fig. S6B | Pearson r (Δ6mA vs. Δ RNA) per TE family, R. microsporus; CMC-EnSpm r = 0.40 p = 0.001 n = 104; Helitron r = 0.37 p = 0.018 n = 33 | te_family, pearson_r, p_val, n_comparisons, condition | `TE_analysis/N6mA/condition_6ma_rna_corr_rmicro.tsv` |
 | FigS6C_6ma_rna_corr_alt | Fig. S6C | Pearson r (Δ6mA vs. Δ RNA) per TE family, additional context; all ns | te_family, pearson_r, p_val, n_comparisons | `TE_analysis/N6mA/condition_6ma_rna_corr_alt.tsv` |
 | FigS7A_cooption_pct_per_clade | Fig. S7A | Percentage orthogroups with ≥1 co-opted gene per clade | clade, species, pct_ogs_coopted, n_ogs_total, n_ogs_coopted | `Co-option/per_species/classification/*.true_TE_coopted_genes.tsv` (aggregated) |
-| FigS7B_cooption_intron_comparison | Fig. S7B | Introns per gene: co-opted vs. non-co-opted genes; Wilcoxon ** p < 0.01, *** p < 0.001 | clade, species, gene_id, cooption_status, n_introns | `Co-option/per_species/classification/` + gene annotation |
+| FigS7B_cooption_introns | Fig. S7B | Introns per gene: co-opted vs. non-co-opted genes; Wilcoxon ** p < 0.01, *** p < 0.001 | clade, species, gene_id, cooption_status, n_introns | `Co-option/per_species/classification/` + gene annotation |
 | FigS7C_duf_interaction_networks | Fig. S7C | Domain interaction networks for DUF4208, DUF3535, DUF4217; n genes per node | focal_domain, partner_domain, n_genes, clade_fraction | `expansion_analysis/results/domain_networks/` |
 | FigS7D_orf_te_fusion_bar | Fig. S7D | Gene count with ORF-derived TE domain fusions per domain family (~40 domains) | domain_family, n_genes_with_fusion | `expansion_analysis/results/figures/Supplementary_Table_S_fusion_combos.tsv` |
 | FigS7E_nacht_fusion_phylogeny | Fig. S7E | Phylogenetic tree metadata for NACHT+Rvt1 and TnpTc5+NACHT fusion events | protein_id, species, fusion_type, te_class, branch_annotation | `expansion_analysis/results/phylo/NACHT*.nwk` + annotation TSV |
@@ -2560,7 +2569,7 @@ described below.
 | FigS9A_dam_rt_phylo | Fig. S9A | DAM+RT fusion protein circular phylogeny metadata | protein_id, species, clade, te_class, DAM_evalue, RT_evalue, orf_length_aa | `DAM_search/results/phylo/DAM_full.nwk` + `DAM_full_annot.tsv` |
 | FigS9B_gypsy_rt_cladogram | Fig. S9B | Gypsy RT chromovirus cladogram with HLH/Myc-B/S/11 presence/absence | element_id, gypsy_subgroup, HLH_MycB_present, HLH_MycS_present, HLH_Myc11_present | `TF_TE_analysis/` Gypsy RT sub-classification tables |
 | FigS9C_gypsy_hmgb3_structure | Fig. S9C | Gypsy TE element structural lengths and HMGb3 motif positions | element_id, element_length_bp, hmgb3_motif_pos_bp | `TF_TE_analysis/02_bigwig_signal/` + HMGb3 motif scan |
-| FigS10A_te_content_vs_bp_enrichment | Fig. S10A | TE content (%) vs. TE enrichment at WGD breakpoints (log₂FC); β = 0.20 | species, total_te_pct, log2fc_at_bp, species_code | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/te_breakpoint_enrichment/` |
+| FigS10A_te_vs_bp_enrich | Fig. S10A | TE content (%) vs. TE enrichment at WGD breakpoints (log₂FC); β = 0.20 | species, total_te_pct, log2fc_at_bp, species_code | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/te_breakpoint_enrichment/` |
 | FigS10B_bp_enrichment_volcano | Fig. S10B | Volcano plots per species: TE superfamily log₂FC vs. −log₁₀ adj p at WGD breakpoints | species, superfamily, log2fc, neg_log10_padj, significant | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/te_breakpoint_enrichment/` per-species TSVs |
 | FigS10C_bp_multiplicon_pct | Fig. S10C | Percentage of syntenic multiplicons containing each significant TE superfamily per species | species, superfamily, pct_multiplicons | `WGD/Modern_wgd2_pipeline/results/paper_no_filter/synteny_summary.tsv` |
 | FigS11A_htt_te_class_per_clade | Fig. S11A | Proportion of HTT events by TE class per clade; n species per clade | clade, te_class, n_htt, proportion, n_species | `HTT/06_htt_candidates/htt_candidates/htt_by_clade_pair.tsv` |
