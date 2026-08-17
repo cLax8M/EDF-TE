@@ -393,13 +393,12 @@ for _stem, _figsize, _s_norm, _s_bold, _ring_kind in PCA_VARIANTS:
         if sp in ring_set:
             ax.annotate(_spd(sp, italic=True),
                         (coords[j, 0], coords[j, 1]),
-                        fontsize=7.5, fontweight="bold",
+                        fontsize=5.5, fontweight="normal",
                         fontstyle="italic",
                         family=["Arial", "DejaVu Sans"],
-                        xytext=(5, 3), textcoords="offset points",
+                        xytext=(4, 2), textcoords="offset points",
                         color="black",
-                        bbox=dict(facecolor="white", edgecolor="none",
-                                  alpha=0.55, pad=0.6))
+                        alpha=0.7)
 
     loadings = pca.components_.T
     feat_labels = [c.replace("prop_", "") for c in prop_cols]
