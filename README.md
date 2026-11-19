@@ -30,13 +30,9 @@ Code for the study of TE evolution in the Holomycota (EDF project).
 ## Data
 
 Large data files (genomes, BAMs, TSVs, WIGs) are **not tracked** in this repository.
-See `/legserv/Temp/Carlos/EDF-TE/data/` and `/legserv/Temp/Carlos/EDF-TE/results/` for all data.
 
 
 ## Dependencies
 
-All R scripts require the `treewasEDFTE` conda environment (`TreeWAS/treewasEDFTE.yml`).
-Nucleosome scripts require additional conda environments:
-- `nucseq_pipeline`: sra-tools, bowtie, samtools, picard, danpos2, bbtools
-- `nuclpred`: see `TE_analysis/NuclPred_v1/nucleosome_prediction_env.yml` + DNAshapeR (Bioconductor)
+Each analysis section may require specific software, packages, and conda environments. Refer to the  documentation within each section for detailed installation instructions and dependencies.
 
