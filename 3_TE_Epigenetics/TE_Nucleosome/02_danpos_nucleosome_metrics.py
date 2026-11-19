@@ -1,36 +1,14 @@
 #!/usr/bin/env python3
-"""
-02_danpos_nucleosome_metrics.py  —  Per-nucleosome DANPOS metrics.
 
-For every nucleosome called by DANPOS ``dpos`` (``positions.xls``) in the
-in-vivo MNase / MAINE datasets, classifies the dyad into one of three
-genomic contexts — TE locus (dyad inside an EarlGrey-annotated TE),
-protein-coding gene body (dyad inside a GFF ``gene`` feature), or intergenic
-(neither) — and compares three per-nucleosome metrics:
+# analyzes nucleosome positioning and organization using DANPOS
 
-  (i)   fuzziness_score  — positional SD of the read population (bp);
-                          lower = more precisely positioned
-  (ii)  smt_value        — smoothed peak height; higher = more nucleosome-like
-  (iii) nrl_bp           — distance to the next dyad on the same chromosome
-                          (nucleosome repeat length proxy; 100–400 bp filter)
+# classifies nucleosomes according to their genomic context (TE, Gene, Inter)
 
-Statistics: two-sided Mann–Whitney U tests for TE vs Gene and TE vs Inter,
-with Benjamini–Hochberg FDR correction across all comparisons, plus
-Cliff's delta effect sizes.
+# compares nucleosome fuzziness, peak height and nucleosome repeat length
 
-Inputs:
-  --positions   DANPOS positions.xls
-  --te_bed      EarlGrey filteredRepeats.bed
-  --gff         gene annotation GFF/GFF3
-  --label       sample label (e.g. AS_Ncrass2_MNase)
-  --out_dir     output directory
+# across genomic contexts in in-vivo MNase / MAINE datasets
 
-Outputs:
-  <label>_nucleosomes.tsv.gz    — per-nucleosome metrics + context
-  <label>_summary.tsv           — context medians + Mann–Whitney U + BH-FDR
-  figures/<label>_boxplots.pdf
-"""
-
+# imports
 from __future__ import annotations
 
 import argparse
