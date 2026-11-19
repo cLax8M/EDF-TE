@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
 
-"""Extract CDS sequences from an NCBI *cds_from_genomic.fna* file.
-
-This script is a small helper for cases where gffread fails for a
-species (e.g. MU_Rhior3). It:
-
-- parses the NCBI cds-from-genomic FASTA
-- maps each entry to its *protein_id=XP_...* field
-- intersects with the protein IDs present in a given proteome FASTA
-- writes a CDS FASTA whose sequence IDs are the protein IDs
-
-The resulting CDS FASTA can be used by the Ks pipeline because
-ParaAT only requires that IDs match between protein and CDS FASTAs.
-"""
+#Extract CDS sequences from an NCBI *cds_from_genomic.fna* file.
 
 from __future__ import annotations
 

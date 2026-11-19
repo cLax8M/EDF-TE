@@ -1,27 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 00_wgd_pipeline.sh  —  WGD pre-processing pipeline (dmd → MCL → KS → syn)
+#  WGD pre-processing pipeline (dmd → MCL → KS → syn)
 #
 # Generates per-species paralog Ks distributions (ks.tsv) and synteny-based
 # multiplicon evidence, which feed into 01_wgd_detection.py and downstream
 # TE–WGD analyses.
-#
-# Steps (review each helper before running):
-#   1. MCL / OrthoFinder duplications  → paralog pairs per species
-#   2. Extract CDS for paralog pairs
-#   3. Filter high-confidence pairs
-#   4. PAL2NAL + yn00 (PAML) → raw Ks values
-#   5. Merge per-species Ks → ks.tsv
-#   6. WGD dmd (Ks peak detection)
-#   7. MCScanX synteny → collinear blocks / multiplicones
-#   8. Integrate synteny evidence with WGD calls
-#
-# Dependencies: Python ≥3.10, PAML (yn00), PAL2NAL, MCScanX, OrthoFinder output
-#
-# Usage:
-#   source ../config.sh                              # project-wide config
-#   source helpers/config_wgd.sh                     # WGD-specific config
-#   bash helpers/00_wgd_pipeline.sh [--dry-run]
 # =============================================================================
 
 set -euo pipefail

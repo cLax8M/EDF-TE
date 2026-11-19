@@ -1,18 +1,7 @@
 #!/usr/bin/env python3
 
-"""Summarize OrthoFinder gene duplication events per node of the species tree.
+#Summarize OrthoFinder gene duplication events per node of the species tree.
 
-Inputs (within --orthofinder-dir):
-  - Species_Tree/SpeciesTree_rooted.txt
-  - Gene_Duplication_Events/Duplications.tsv
-
-Outputs (in --out-dir):
-  - duplications_per_node.tsv
-  - duplications_per_species_branch.tsv
-
-This script does NOT assume any previous code; it only relies on
-standard OrthoFinder formats.
-"""
 
 import argparse
 from pathlib import Path

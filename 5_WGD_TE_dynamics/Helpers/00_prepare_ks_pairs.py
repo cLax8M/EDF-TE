@@ -1,19 +1,6 @@
 #!/usr/bin/env python3
 
-"""Prepare intra-species paralog pairs for Ks calculation.
-
-Esta implementación usa únicamente Orthogroups.tsv de OrthoFinder para
-definir pares de parálogos intra-especie: para cada orthogroup y especie,
-genera todas las combinaciones no ordenadas de genes de esa especie.
-
-Columnas de salida:
-  - species: nombre de la especie (columna en Orthogroups.tsv)
-  - gene_id_1, gene_id_2: IDs de genes/proteínas dentro de la especie
-  - orthogroup: ID del orthogroup (p.ej. OG0000123)
-  - dup_node_id: de momento vacío (NA); se podrá rellenar más adelante a
-    partir de Gene_Duplication_Events/Duplications.tsv si se desea mapear
-    cada par a un nodo concreto del árbol de especies.
-"""
+#Prepare intra-species paralog pairs for Ks calculation.
 
 import argparse
 import itertools

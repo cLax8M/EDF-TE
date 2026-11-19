@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
 
-"""Skeleton: integrate synteny (MCScanX) with WGD candidates.
-
-Planned behavior:
-  - parse MCScanX .collinearity outputs
-  - overlap with Ks-based WGD candidates
-  - summarize paralogons supporting each putative WGD event
-
-Current behavior: just writes an empty summary table.
-"""
+#Skeleton: integrate synteny (MCScanX) with WGD candidates.
 
 import argparse
 from pathlib import Path

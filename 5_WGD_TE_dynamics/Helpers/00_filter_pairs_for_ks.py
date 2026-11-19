@@ -1,20 +1,7 @@
 #!/usr/bin/env python3
 
-"""Filter intra-species paralog pairs before Ks calculation.
+#Filter intra-species paralog pairs before Ks calculation.
 
-Uses:
-  - Orthogroups/Orthogroups.GeneCount.tsv from OrthoFinder
-  - results/ks/paralog_pairs_for_ks.tsv (output of 02_prepare_ks_pairs.py)
-
-Strategy:
-  - Remove orthogroups where ANY species has more than a given copy number
-    (e.g. >5–10 genes). This prunes very multi-copy families that create
-    huge, noisy Ks clouds.
-  - Keep table format identical, but reduced in size.
-
-Output:
-  - results/ks/paralog_pairs_for_ks.filtered.tsv
-"""
 
 import argparse
 from pathlib import Path

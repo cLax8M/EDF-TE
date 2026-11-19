@@ -3,12 +3,7 @@
 set -euo pipefail
 
 # Prepare ParaAT + KaKs_Calculator inputs per species for Ks estimation.
-#
-# This script does NOT execute ParaAT by default, because its exact
-# command-line options and KaKs_Calculator installation path may vary
-# between systems. Instead, it prepares per-species pairs and prints
-# ready-to-adapt command lines you can run manually or wrap in SLURM
-# jobs.
+
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../core/config_wgd.sh"

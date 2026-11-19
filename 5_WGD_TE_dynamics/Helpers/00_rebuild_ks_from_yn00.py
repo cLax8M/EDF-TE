@@ -6,12 +6,7 @@ from typing import Optional, Tuple
 
 
 def parse_ds_from_yn00(path: Path) -> Optional[float]:
-    """Parse dS (Ks) from a PAML yn00 output file.
-
-    We take the Yang & Nielsen (2000) section (B), and from the first
-    data line under that header we read the third value from the end,
-    which corresponds to dS (before '+-' and its SE).
-    """
+  
 
     try:
         with path.open() as fh:

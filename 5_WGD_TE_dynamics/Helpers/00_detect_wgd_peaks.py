@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 
-"""Skeleton: detect WGD-related Ks peaks.
-
-Planned behavior:
-  - read Ks distributions per species
-  - fit mixture models or use peak detection
-  - identify candidate WGD peaks and output wgd_candidates.tsv
-
-Current behavior: only checks that the expected Ks table exists and
-writes an empty wgd_candidates.tsv.
-"""
+#Skeleton: detect WGD-related Ks peaks.
 
 import argparse
 from pathlib import Path

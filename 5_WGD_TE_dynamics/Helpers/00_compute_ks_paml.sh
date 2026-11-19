@@ -1,13 +1,7 @@
 #!/usr/bin/env bash
 
 # Compute Ks using MAFFT + PAL2NAL + PAML yn00 for one species.
-# Usage:
-#   03_compute_ks_paml.sh <species>
-#
-# Expects:
-#   - results/ks/paralog_pairs_for_ks.filtered.tsv  (species, gene1, gene2, ...)
-#   - results/ks/cds/<species>.cds.fa
-#   - proteins under ${PROTEIN_DIR} with usual extensions (.faa/.fa/.fasta/.aa.fasta/.aa.fa)
+
 
 set -euo pipefail
 

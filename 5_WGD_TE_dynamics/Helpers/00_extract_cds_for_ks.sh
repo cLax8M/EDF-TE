@@ -3,21 +3,7 @@
 set -euo pipefail
 
 # Extract CDS FASTA per species for Ks calculation.
-#
-# Requirements on LEGcompute:
-#   - micromamba installed
-#   - an environment called "wgd_tools" with gffread installed
-#
-# Assumptions:
-#   - RESULTS_DIR, GENOME_DIR, GFF_DIR are defined in config_wgd.sh
-#   - Species names in results/ks/paralog_pairs_for_ks.tsv pueden llevar un
-#     sufijo ".aa" (p. ej. MU_Rhisto1.aa) que no aparece en los FASTA de
-#     genoma ni en los GFF.
-#   - Este script intentará:
-#       * quitar el sufijo .aa para buscar los archivos de genoma/GFF
-#       * probar varias extensiones comunes:
-#           GENOME_DIR/<base>.fasta | .fa | .fna
-#           GFF_DIR/<base>.gff3  | .gff
+
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../core/config_wgd.sh"
