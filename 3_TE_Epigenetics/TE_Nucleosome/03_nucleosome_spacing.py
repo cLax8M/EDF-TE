@@ -1,36 +1,18 @@
 #!/usr/bin/env python3
-"""
-03_nucleosome_spacing.py  —  Nucleosome repeat length / spacing analysis.
 
-Computes the nucleosome repeat length (NRL) — the lag (140–240 bp) of the
-strongest autocorrelation peak of the occupancy signal — from genome tiled
-windows of an occupancy track (NuclPred prediction or in-vivo DANPOS WIG),
-and compares spacing between:
+# Nucleosome repeat length (NRL) and spacing analysis.
 
-  A. Windows classified by TE density (TE-rich Q4 vs TE-poor Q1)
-  B. Windows overlapping TE copies of each superfamily vs background
-  C. Species / datasets side-by-side (summary table)
+# Estimates NRL from occupancy tracks using autocorrelation and evaluates
 
-Statistics: Mann–Whitney U tests (TE-rich vs TE-poor), BH-FDR correction
-and Cliff's delta.  An optional "--paired" mode performs per-species
-Wilcoxon signed-rank on the median NRL difference.
+# differences in nucleosome spacing across TE-density groups.
 
-Inputs:
-  --wig          occupancy WIG (nuclpred or in-vivo smoothed)
-  --fai          genome .fasta.fai
-  --te_bed       EarlGrey filteredRepeats.bed
-  --species      species / dataset label
-  --win          window size (default 10000)
-  --min_te_frac  minimum TE fraction to call a window TE-rich (default 0.5)
-  --out_dir      output directory
+# Analyses:
 
-Outputs:
-  <species>_window_spacing.tsv    — per-window NRL + TE fraction
-  <species>_spacing_summary.tsv   — TE-rich vs TE-poor comparison (Mann-Whitney U)
-  figures/<species>_nrl_distribution.pdf
-  figures/<species>_nrl_by_te_density.pdf
-"""
+#   - TE-rich vs TE-poor genomic windows.
 
+#   - NRL distribution across TE-density quartiles.
+
+# imports
 from __future__ import annotations
 
 import argparse
