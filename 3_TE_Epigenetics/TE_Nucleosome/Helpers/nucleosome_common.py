@@ -1,21 +1,9 @@
 #!/usr/bin/env python3
-"""
-nucleosome_common.py  —  shared helpers for the EDF-TE nucleosome analysis
-scripts (01–06).  Provides:
+# provides shared helper functions for nucleosome analysis scripts
 
-  * WIG / bedGraph parsing (fixedStep, variableStep; gzip-aware)
-  * genome tiling + per-window nucleosome metrics
-      mean occupancy, CV, autocorrelation peak (140–240 bp) and lag (NRL)
-  * EarlGrey TE BED parsing and TE-class classification
-  * DANPOS positions.xls handling (dyad calling + NRL)
-  * nucleosome context classification (TE / gene / intergenic)
-  * statistics: BH–FDR correction, Cliff's delta, effect-size helpers
-  * plot style helpers
+# handles genomic data parsing, nucleosome metrics, and TE classification
 
-Every function is self-contained and only depends on numpy/scipy/pandas/
-matplotlib, so the section-3 scripts can be run independently on any machine
-with the same library versions as the original analysis.
-"""
+# includes statistical analysis and plot styling utilities
 
 from __future__ import annotations
 
