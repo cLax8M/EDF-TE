@@ -1,6 +1,0 @@
-data/
-figures/
-*.pyc
-__pycache__/
-*.log
-*.tmp
