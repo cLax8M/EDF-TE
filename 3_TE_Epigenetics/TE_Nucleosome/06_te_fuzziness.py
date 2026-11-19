@@ -1,37 +1,13 @@
 #!/usr/bin/env python3
-"""
-06_te_fuzziness.py  —  Nucleosome fuzziness at TE loci.
+# analyzes nucleosome fuzziness at TE loci using DANPOS predictions
 
-Analyses the fuzziness (positional dispersion) of DANPOS-called
-nucleosomes at TE loci compared to genes and intergenic regions, and — when
-an H3K9me3 broad-peak BED is provided — tests whether TE-associated
-nucleosomes within H3K9me3 domains are more fuzzy than TE nucleosomes
-outside H3K9me3 domains (consistent with the heterochromatin-proxy state).
+# compares nucleosome positioning across TE, gene, and intergenic regions
 
-Metrics:
-  * fuzziness_score — positional SD (bp); lower = better positioned
-  * NRL among TE nucleosomes (100–400 bp filter)
+# evaluates the relationship between TE-associated nucleosome fuzziness
 
-Statistics:
-  * Kruskal–Wallis across TE / Gene / Inter contexts, followed by pairwise
-    Mann–Whitney U (TE vs Gene, TE vs Inter) with BH-FDR correction and
-    Cliff's delta.
-  * Mann–Whitney U: TE∩H3K9me3 vs TE∩no-H3K9me3 fuzziness.
+# and H3K9me3 heterochromatin domains
 
-Inputs:
-  --positions   DANPOS positions.xls
-  --te_bed      EarlGrey filteredRepeats.bed
-  --gff         gene annotation GFF/GFF3
-  --h3k9_bed    (optional) H3K9me3 broad-peaks BED
-  --label       sample label
-  --out_dir     output directory
-
-Outputs:
-  <label>_fuzziness_nucleosomes.tsv.gz
-  <label>_fuzziness_summary.tsv      — group medians + tests
-  figures/<label>_fuzziness_contexts.pdf
-  figures/<label>_fuzziness_h3k9.pdf
-"""
+# imports
 
 from __future__ import annotations
 
