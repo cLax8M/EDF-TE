@@ -1,39 +1,9 @@
 #!/usr/bin/env python3
-"""
-04_te_vs_nonte.py  —  TE vs non-TE (gene / background) occupancy comparison.
+# compares nucleosome occupancy between TE and non-TE regions
 
-Compares the nucleosome occupancy signal between TE-overlapping regions and
-non-TE regions at the 500 bp window level, for one or more species / tracks:
+# across one or more species using WIG occupancy tracks
 
-  A. Mean occupancy of TE+ windows (≥50 % EarlGrey overlap) vs TE− windows
-     (no TE overlap).
-  B. Same comparison restricted to TE+ vs *gene* windows and TE+ vs
-     *background* (non-TE, non-genic) windows.
-  C. Per-superfamily delta-occupancy (TE − background).
-
-An optional ``--paired`` flag (default on when >1 species passed) averages
-per-species deltas and tests the cross-species TE+/TE− difference with the
-Wilcoxon signed-rank test.
-
-Statistics: Mann–Whitney U (per species) + BH-FDR; Wilcoxon signed-rank
-(cross-species).
-
-Inputs:
-  --wig          occupancy WIG (repeatable) or --wig_list file
-  --fai          genome .fasta.fai (repeatable, matching --wig order)
-  --te_bed       EarlGrey filteredRepeats.bed (repeatable)
-  --gff          gene GFF (repeatable; optional)
-  --species      species label (repeatable; default s1, s2, ...)
-  --win          window size (default 500)
-  --min_te_frac  TE-overlap threshold (default 0.5)
-  --out_dir      output directory
-
-Outputs:
-  te_vs_nonte_summary.tsv
-  per_species/<species>_windows.tsv.gz
-  figures/<species>_te_vs_nonte_boxplot.pdf
-  figures/te_vs_nonte_deltas.pdf
-"""
+# imports
 
 from __future__ import annotations
 
