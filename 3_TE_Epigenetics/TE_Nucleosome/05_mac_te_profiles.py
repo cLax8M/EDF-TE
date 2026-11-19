@@ -1,41 +1,10 @@
 #!/usr/bin/env python3
-"""
-05_mac_te_profiles.py  —  Meta-TE (MAC) nucleosome occupancy profiles.
 
-Computes average nucleosome occupancy profiles centred on TE insertions
-(meta-TE / metagene-style profiles), split by TE class and optionally by
-TE superfamily.  For each TE copy:
+# compute meta-TE nucleosome occupancy profiles by TE class
 
-  * the occupancy signal is extracted in a window of ``--window`` bp
-    upstream/downstream of the TE midpoint,
-  * the copy is normalised to its own z-score (or scaled to 0–1 with
-    ``--normalize minmax``),
-  * profiles are averaged within each class.
+# normalize each TE insertion and calculate average profiles
 
-Outputs both the raw averaged profiles (with standard error bands) and a
-summary of the profile features (flank occupancy, peak, trough).
-
-Statistics: profiles are compared between the 5′ flank (most upstream 25 %
-of the window) and the TE body using a paired Wilcoxon signed-rank test per
-class; cross-class comparison of body occupancy uses the Kruskal–Wallis test.
-
-Inputs:
-  --wig          occupancy WIG
-  --fai          genome .fasta.fai
-  --te_bed       EarlGrey filteredRepeats.bed
-  --species      species / dataset label
-  --window       bp up/downstream of TE midpoint (default 2000)
-  --min_insertions  min TE copies per class (default 10)
-  --max_te_len   skip TEs longer than this (default 5000)
-  --n_bins       profile resolution (default 200)
-  --normalize    zscore | minmax (default zscore)
-  --out_dir      output directory
-
-Outputs:
-  <species>_meta_te_profiles.tsv   — per-class averaged profile
-  <species>_meta_te_summary.tsv    — flank-vs-body stats per class
-  figures/<species>_meta_te_profiles.pdf
-"""
+# compare occupancy between the 5' flank and TE body
 
 from __future__ import annotations
 
