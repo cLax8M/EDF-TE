@@ -1,15 +1,9 @@
 #!/bin/bash
 # =============================================================================
-# run_nucleosome_analysis.sh — SLURM array driver for the EDF-TE nucleosome
-# analysis scripts (01 / 03 / 05) on 217 species.
-#
-# Mirrors the original run_nucl_te_interplay.sh workflow but calls the
-# self-contained scripts in EDF-TE_complete/section3_te_epigenetics/
-# nucleosome_analysis/.
-#
-# Edit the path variables below to match your system, then submit:
-#   sbatch --array=1-217 run_nucleosome_analysis.sh
-# =============================================================================
+# runs nucleosome analysis scripts across 217 fungal species
+
+# executes SLURM array jobs for the EDF-TE nucleosome analysis pipeline
+=============================================================================
 
 #SBATCH --job-name=nucl_analysis
 #SBATCH --partition=normal.168h
