@@ -1,37 +1,11 @@
 #!/usr/bin/env python3
-"""
-01_nuclpred_analysis.py  —  Genome-wide NuclPred occupancy analysis.
+# analyzes genome-wide nucleosome occupancy using NuclPred predictions
 
-For each species with a NuclPred per-base predicted-occupancy WIG
-(``Section2_TElandscape/nucleosomes/nuclpred/{SP}_nuclpred.wig``):
+# identifies chromatin states and evaluates TE-associated nucleosome occupancy
 
-  A. Tiles the genome into 500 bp windows and computes, per window,
-     mean occupancy and autocorrelation peak (140–240 bp lag) — the two
-     metrics used to define the four chromatin states (Open / Phased /
-     Fuzzy_mid / Fuzzy_high; Fuzzy_high ≈ heterochromatin proxy).
-  B. Classifies every window into one of the four chromatin states using
-     the genome-wide q33/q67 occupancy thresholds and the median phasing.
-  C. Reports TE-vs-background occupancy: for each TE superfamily the mean
-     predicted occupancy over TE-overlapping windows vs non-TE, non-genic
-     (background) windows, together with the Mann–Whitney U test and
-     Cliff's delta effect size.
+# across fungal genomes
 
-Inputs (CLI):
-  --wig          NuclPred WIG (fixedStep/variableStep, gzip allowed)
-  --fai          genome .fasta.fai (chromosome lengths)
-  --te_bed       EarlGrey filteredRepeats.bed
-  --gff          (optional) gene annotation GFF/GFF3 to mask genic windows
-  --species      species code (output labelling)
-  --win          window size (default 500)
-  --out_dir      output directory
-
-Outputs:
-  <species>_window_metrics.tsv.gz   — per-window metrics + state
-  <species>_chromatin_states.tsv    — per-state summary
-  <species>_te_bias.tsv             — per-superfamily TE vs background
-  figures/<species>_states_summary.pdf
-  figures/<species>_te_bias.pdf
-"""
+# imports
 
 from __future__ import annotations
 
